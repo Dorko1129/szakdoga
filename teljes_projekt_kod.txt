@@ -1,0 +1,3482 @@
+﻿
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\middleware\authMiddleware.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// HitelesÃ­tÃ©si kÃ¶ztesrÃ©teg (Authentication Middleware)
+// Feladata a bejÃ¶vÅ‘ HTTP kÃ©rÃ©sek fejlÃ©cÃ©ben talÃ¡lhatÃ³ JWT token Ã©rvÃ©nyesÃ­tÃ©se
+
+const jwt = require('jsonwebtoken');
+
+module.exports = function (req, res, next) {
+    // 1. Token kinyerÃ©se a kÃ©rÃ©s fejlÃ©cÃ©bÅ‘l (Authorization header)
+    const token = req.header('Authorization');
+
+    // 2. Ha nincs token, a hozzÃ¡fÃ©rÃ©s megtagadÃ¡sa
+    if (!token) {
+        return res.status(401).json({ message: 'Nincs token megadva, a hitelesÃ­tÃ©s megtagadva.' });
+    }
+
+    try {
+        // 3. A "Bearer " elÅ‘tag levÃ¡gÃ¡sa a token stringrÅ‘l, amennyiben jelen van
+        const actualToken = token.startsWith('Bearer ') ? token.slice(7, token.length).trimLeft() : token;
+
+        // 4. Token dekÃ³dolÃ¡sa Ã©s ellenÅ‘rzÃ©se a titkos kulcs segÃ­tsÃ©gÃ©vel
+        const decoded = jwt.verify(actualToken, process.env.JWT_SECRET);
+        
+        // 5. A dekÃ³dolt felhasznÃ¡lÃ³i adatok (ID, role) csatolÃ¡sa a kÃ©rÃ©s (req) objektumhoz
+        req.user = decoded;
+        
+        // 6. VezÃ©rlÃ©s Ã¡tadÃ¡sa a kÃ¶vetkezÅ‘ middleware-nek vagy a vÃ©gsÅ‘ ÃºtvonalkezelÅ‘nek
+        next();
+    } catch (error) {
+        res.status(401).json({ message: 'Ã‰rvÃ©nytelen vagy lejÃ¡rt token.' });
+    }
+};
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\models\booking.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// FoglalÃ¡s (Booking) entitÃ¡s adatbÃ¡zis modellje
+
+const mongoose = require('mongoose');
+
+const bookingSchema = new mongoose.Schema({
+    companyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    staffId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Staff',
+        required: true
+    },
+    serviceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Service',
+        required: true
+    },
+    // RegisztrÃ¡lt felhasznÃ¡lÃ³ esetÃ©n a kapcsolÃ³dÃ³ entitÃ¡s azonosÃ­tÃ³ja
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    // RegisztrÃ¡ciÃ³ nÃ©lkÃ¼li (vendÃ©g) foglalÃ¡s esetÃ©n tÃ¡rolt adatok
+    guestData: {
+        name: { type: String, default: '' },
+        email: { type: String, default: '' },
+        phone: { type: String, default: '' },
+        isRegistered: { type: Boolean, default: false }
+    },
+    // A foglalÃ¡s pontos dÃ¡tuma (YYYY-MM-DD formÃ¡tumban)
+    date: {
+        type: String,
+        required: true
+    },
+    startTime: {
+        type: String, // formÃ¡tum: "HH:mm"
+        required: true
+    },
+    endTime: {
+        type: String, // formÃ¡tum: "HH:mm"
+        required: true
+    },
+    // A foglalÃ¡s aktuÃ¡lis Ã¡llapota
+    status: {
+        type: String,
+        enum: ['pending', 'confirmed', 'cancelled'],
+        default: 'pending' // AlapÃ©rtelmezett Ã¡llapot: vÃ¡rakozÃ³/fÃ¼ggÅ‘ben lÃ©vÅ‘
+    }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Booking', bookingSchema);
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\models\Service.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// SzolgÃ¡ltatÃ¡s (Service) entitÃ¡s adatbÃ¡zis modellje
+
+const mongoose = require('mongoose');
+
+const serviceSchema = new mongoose.Schema({
+    // A szolgÃ¡ltatÃ¡st nyÃºjtÃ³ cÃ©g (User entitÃ¡s) azonosÃ­tÃ³ja
+    companyId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        required: true 
+    },
+    // A szolgÃ¡ltatÃ¡s megnevezÃ©se
+    name: { 
+        type: String, 
+        required: true 
+    },
+    // A szolgÃ¡ltatÃ¡s idÅ‘tartama percben kifejezve
+    duration: { 
+        type: Number, 
+        required: true 
+    },
+    // A szolgÃ¡ltatÃ¡s dÃ­ja
+    price: { 
+        type: Number, 
+        required: true 
+    },
+    // KiegÃ©szÃ­tÅ‘ leÃ­rÃ¡s a szolgÃ¡ltatÃ¡s rÃ©szleteirÅ‘l
+    description: { 
+        type: String 
+    }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Service', serviceSchema);
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\models\Staff.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// MunkatÃ¡rs (Staff) Ã©s elÃ©rhetÅ‘sÃ©g entitÃ¡s adatbÃ¡zis modellje
+
+const mongoose = require('mongoose');
+
+const staffSchema = new mongoose.Schema({
+    // A munkÃ¡ltatÃ³ cÃ©g (User entitÃ¡s) azonosÃ­tÃ³ja
+    companyId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        required: true 
+    },
+    // A munkatÃ¡rs teljes neve
+    name: { 
+        type: String, 
+        required: true 
+    },
+    // A munkatÃ¡rs Ã¡ltal elvÃ©gezhetÅ‘ szolgÃ¡ltatÃ¡sok azonosÃ­tÃ³inak listÃ¡ja
+    services: [{ 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Service' 
+    }],
+    
+    // NaptÃ¡r Ã©s elÃ©rhetÅ‘sÃ©gi konfigurÃ¡ciÃ³k
+    availability: {
+        // FoglalÃ¡si idÅ‘kÃ¶zÃ¶k hossza percben kifejezve
+        slotInterval: { type: Number, default: 30 }, 
+        
+        // KÃ©t foglalÃ¡s kÃ¶zÃ¶tti kÃ¶telezÅ‘ szÃ¼net hossza percben
+        bufferTime: { type: Number, default: 0 }, 
+        
+        // Heti rendszeres munkaidÅ‘-beosztÃ¡s
+        workingHours: [{
+            // A hÃ©t napjÃ¡nak indexe (0: VasÃ¡rnap, 1: HÃ©tfÅ‘, ..., 6: Szombat)
+            dayOfWeek: { type: Number }, 
+            // Napi munkakezdÃ©s idÅ‘pontja ("HH:mm" formÃ¡tumban)
+            startTime: { type: String }, 
+            // Napi munkavÃ©gzÃ©s vÃ©ge ("HH:mm" formÃ¡tumban)
+            endTime: { type: String }    
+        }],
+        
+        // Egyedi szabadnapok Ã©s kivÃ©telek listÃ¡ja, amikor a foglalÃ¡s szÃ¼netel
+        daysOff: [{ type: Date }] 
+    }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Staff', staffSchema);
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\models\Users.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// FelhasznÃ¡lÃ³ (User) entitÃ¡s adatbÃ¡zis modellje
+
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    // RegisztrÃ¡ciÃ³ nÃ©lkÃ¼li foglalÃ¡sok esetÃ©n a mezÅ‘ Ã©rtÃ©ke lehet Ã¼res
+    password: {
+        type: String
+    },
+    // KapcsolattartÃ¡si telefonszÃ¡m
+    phone: {
+        type: String,
+        default: ''
+    },
+    // A rendszerben elÃ©rhetÅ‘ jogosultsÃ¡gi szintek (user/guest = vendÃ©g, company = szolgÃ¡ltatÃ³)
+    role: {
+        type: String,
+        enum: ['user', 'guest', 'company', 'admin'],
+        default: 'user'
+    },
+    // SzolgÃ¡ltatÃ³i (company) profilhoz tartozÃ³ specifikus beÃ¡llÃ­tÃ¡sok
+    companySettings: {
+        // A szolgÃ¡ltatÃ³ cÃ©g vagy mÃ¡rka neve
+        brandName: { type: String },
+        // EgyÃ©ni arculati szÃ­nkÃ³d a felhasznÃ¡lÃ³i felÃ¼lethez
+        themeColor: { type: String, default: '#00ACC1' }
+    }
+}, {
+    timestamps: true
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\routes\auth.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// AutentikÃ¡ciÃ³s Ãºtvonalak (RegisztrÃ¡ciÃ³, BejelentkezÃ©s, ProfilkezelÃ©s)
+
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/Users');
+const auth = require('../middleware/authMiddleware');
+
+// [POST] Ãšj felhasznÃ¡lÃ³ regisztrÃ¡ciÃ³ja vÃ©gpont
+router.post('/register', async (req, res) => {
+    try {
+        const { name, email, password, phone, role } = req.body;
+
+        // 1. EllenÅ‘rizzÃ¼k, hogy lÃ©tezik-e mÃ¡r ez az e-mail cÃ­m
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Ez az e-mail cÃ­m mÃ¡r regisztrÃ¡lva van a rendszerben.' });
+        }
+
+        // 2. JelszÃ³ titkosÃ­tÃ¡sa (sÃ³zÃ¡s Ã©s hashelÃ©s)
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // 3. Ãšj felhasznÃ¡lÃ³ entitÃ¡s lÃ©trehozÃ¡sa (a 'guest' szerepkÃ¶rt egysÃ©gesen 'user'-kÃ©nt tÃ¡roljuk)
+        const normalizedRole = role === 'company' ? 'company' : 'user';
+
+        const newUser = new User({
+            name,
+            email,
+            password: hashedPassword,
+            phone: phone || '',
+            role: normalizedRole
+        });
+
+        // 4. Adatok mentÃ©se az adatbÃ¡zisba
+        await newUser.save();
+
+        // 5. JWT token generÃ¡lÃ¡sa az azonnali belÃ©ptetÃ©shez
+        const token = jwt.sign(
+            { userId: newUser._id, role: newUser.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+
+        res.status(201).json({
+            message: 'FelhasznÃ¡lÃ³ sikeresen regisztrÃ¡lva!',
+            token,
+            user: {
+                _id: newUser._id,
+                id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                phone: newUser.phone,
+                role: newUser.role
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Szerverhiba tÃ¶rtÃ©nt a regisztrÃ¡ciÃ³ sorÃ¡n.', error: error.message });
+    }
+});
+
+// [POST] BejelentkezÃ©s Ã©s JWT token generÃ¡lÃ¡sa
+router.post('/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'FelhasznÃ¡lÃ³ nem talÃ¡lhatÃ³ ezzel az e-mail cÃ­mmel.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'HibÃ¡s hitelesÃ­tÅ‘ adatok.' });
+        }
+
+        const token = jwt.sign(
+            { userId: user._id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+
+        res.status(200).json({
+            message: 'Sikeres hitelesÃ­tÃ©s.',
+            token,
+            user: {
+                _id: user._id,
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                role: user.role
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'KiszolgÃ¡lÃ³oldali hiba a hitelesÃ­tÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+// [GET] AktuÃ¡lisan bejelentkezett felhasznÃ¡lÃ³ adatainak lekÃ©rÃ©se
+router.get('/me', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select('-password');
+
+        if (!user) {
+            return res.status(404).json({ message: 'A keresett felhasznÃ¡lÃ³i profil nem talÃ¡lhatÃ³.' });
+        }
+
+        res.status(200).json(user);
+    } catch (error) {
+        res.status(500).json({ message: 'KiszolgÃ¡lÃ³oldali hiba az adatok lekÃ©rÃ©se sorÃ¡n.', error: error.message });
+    }
+});
+
+// [PUT] FelhasznÃ¡lÃ³i vagy cÃ©gprofil adatainak frissÃ­tÃ©se
+// [PUT] FelhasznÃ¡lÃ³i vagy cÃ©gprofil adatainak frissÃ­tÃ©se
+router.put('/profile', auth, async (req, res) => {
+    try {
+        const { name, email, phone, password } = req.body;
+
+        // KeresÃ©s a tokenben tÃ¡rolt userId alapjÃ¡n
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'A felhasznÃ¡lÃ³ nem talÃ¡lhatÃ³.' });
+        }
+
+        // E-mail cÃ­m Ã¼tkÃ¶zÃ©s ellenÅ‘rzÃ©se (ha megvÃ¡ltoztatta a felhasznÃ¡lÃ³)
+        if (email && email !== user.email) {
+            const existingUser = await User.findOne({ email });
+            if (existingUser) {
+                return res.status(400).json({ message: 'Ez az e-mail cÃ­m mÃ¡r hasznÃ¡latban van egy mÃ¡sik fiÃ³knÃ¡l.' });
+            }
+            user.email = email;
+        }
+
+        if (name) user.name = name;
+        if (phone !== undefined) user.phone = phone;
+
+        // JelszÃ³ frissÃ­tÃ©se csak akkor, ha a felhasznÃ¡lÃ³ Ãºj jelszÃ³t adott meg
+        if (password && password.trim() !== '') {
+            const salt = await bcrypt.genSalt(10);
+            user.password = await bcrypt.hash(password, salt);
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            message: 'Profil sikeresen frissÃ­tve!',
+            user: {
+                _id: user._id,
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                role: user.role
+            }
+        });
+    } catch (error) {
+        console.error('Profil mentÃ©si hiba:', error);
+        
+        // BiztonsÃ¡gi hÃ¡lÃ³: Ha mÃ©gis MongoDB egyedi kulcs (duplicate) hiba lÃ©pne fel (E11000)
+        if (error.code === 11000) {
+            return res.status(400).json({ message: 'Ez az e-mail cÃ­m mÃ¡r foglalt.' });
+        }
+        
+        res.status(500).json({ message: 'Hiba a profil frissÃ­tÃ©sekor.' });
+    }
+});
+
+module.exports = router;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\routes\booking.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// FoglalÃ¡sok (Booking) Ãºtvonalai Ã©s vÃ©gpontjai
+
+const express = require('express');
+const router = express.Router();
+const Booking = require('../models/booking');
+const auth = require('../middleware/authMiddleware');
+const Staff = require('../models/Staff');
+const Service = require('../models/Service');
+const sendBookingStatusEmail = require('../utils/sendEmail');
+
+// [GET] Szabad idÅ‘pontok lekÃ©rÃ©se egy adott napra, munkatÃ¡rsra Ã©s szolgÃ¡ltatÃ¡sra
+router.get('/available-slots', async (req, res) => {
+    try {
+        const { staffId, date, serviceId } = req.query;
+        if (!staffId || !date || !serviceId) return res.status(400).json({ message: 'HiÃ¡nyzÃ³ paramÃ©terek.' });
+
+        const staff = await Staff.findById(staffId);
+        const service = await Service.findById(serviceId);
+        if (!staff || !service) return res.status(404).json({ message: 'MunkatÃ¡rs vagy szolgÃ¡ltatÃ¡s nem talÃ¡lhatÃ³.' });
+
+        // Keresett nap sorszÃ¡mÃ¡nak illesztÃ©se (1: HÃ©tfÅ‘ ... 7: VasÃ¡rnap)
+        const queryDate = new Date(date);
+        const jsDay = queryDate.getDay();
+        const dayOfWeek = jsDay === 0 ? 7 : jsDay; 
+
+        // MunkatÃ¡rs aznapi munkaideje
+        const workDay = staff.availability.workingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+        if (!workDay) return res.status(200).json([]); // Ha nincs talÃ¡lat, nem dolgozik ezen a napon
+
+        // Aznapi lÃ©tezÅ‘, aktÃ­v foglalÃ¡sok lekÃ©rÃ©se (elutasÃ­tottakat nem nÃ©zzÃ¼k)
+        const existingBookings = await Booking.find({
+            staffId,
+            date: date,
+            status: { $ne: 'cancelled' }
+        });
+
+        let availableSlots = [];
+        let currentSlot = new Date(`${date}T${workDay.startTime}:00`);
+        const endOfDay = new Date(`${date}T${workDay.endTime}:00`);
+        const slotInterval = staff.availability.slotInterval || 30; // 30 perces ugrÃ¡sokkal haladunk
+
+        // IdÅ‘pontok generÃ¡lÃ¡sa Ã©s Ã¼tkÃ¶zÃ©svizsgÃ¡lat
+        while (currentSlot < endOfDay) {
+            const slotStart = new Date(currentSlot);
+            const slotEnd = new Date(currentSlot.getTime() + (service.duration * 60000));
+
+            // Ha a szolgÃ¡ltatÃ¡s vÃ©ge tÃºlnyÃºlna a munkaidÅ‘n, megszakÃ­tjuk a keresÃ©st
+            if (slotEnd > endOfDay) break;
+
+            // EllenÅ‘rizzÃ¼k, hogy a generÃ¡lt idÅ‘pont Ã¼tkÃ¶zik-e bÃ¡rmelyik meglÃ©vÅ‘ foglalÃ¡ssal
+            const isOverlapping = existingBookings.some(booking => {
+                const bStart = new Date(`${date}T${booking.startTime}:00`);
+                const bEnd = new Date(`${date}T${booking.endTime}:00`);
+                return (slotStart < bEnd && slotEnd > bStart);
+            });
+
+            if (!isOverlapping) {
+                const timeString = slotStart.toTimeString().substring(0, 5); // "HH:MM" formÃ¡tum
+                availableSlots.push(timeString);
+            }
+
+            // UgrÃ¡s a kÃ¶vetkezÅ‘ slotra (pl. 08:00 -> 08:30)
+            currentSlot = new Date(currentSlot.getTime() + (slotInterval * 60000));
+        }
+
+        res.status(200).json(availableSlots);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Hiba a szabad idÅ‘pontok szÃ¡mÃ­tÃ¡sakor.' });
+    }
+});
+
+// [POST] Ãšj idÅ‘pontfoglalÃ¡s rÃ¶gzÃ­tÃ©se a rendszerben
+// Publikus vÃ©gpont, regisztrÃ¡ciÃ³ nÃ©lkÃ¼li (vendÃ©g) Ã¼gyfelek szÃ¡mÃ¡ra is elÃ©rhetÅ‘
+router.post('/', async (req, res) => {
+    try {
+        const { companyId, staffId, serviceId, clientId, userId, guestData, date, startTime, endTime } = req.body;
+
+        // Ãšj foglalÃ¡s entitÃ¡s pÃ©ldÃ¡nyosÃ­tÃ¡sa a kÃ©rÃ©sben kapott paramÃ©terek alapjÃ¡n
+        // A stÃ¡tusz alapÃ©rtelmezetten 'pending' (vÃ¡rakozÃ³) lesz a modell definÃ­ciÃ³ja szerint
+        const newBooking = new Booking({
+            companyId,
+            staffId,
+            serviceId,
+            clientId: clientId || null,
+            userId: userId || null,
+            guestData: guestData || null,
+            date,
+            startTime,
+            endTime
+        });
+
+        const savedBooking = await newBooking.save();
+
+        res.status(201).json({
+            message: 'A foglalÃ¡s sikeresen rÃ¶gzÃ­tve, adminisztrÃ¡tori jÃ³vÃ¡hagyÃ¡sra vÃ¡r.',
+            booking: savedBooking
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'KiszolgÃ¡lÃ³oldali hiba a foglalÃ¡s mentÃ©se sorÃ¡n.', error: error.message });
+    }
+});
+
+// [GET] HitelesÃ­tett szolgÃ¡ltatÃ³hoz (company) tartozÃ³ Ã¶sszes foglalÃ¡s lekÃ©rdezÃ©se
+// VÃ©dett vÃ©gpont: az 'auth' middleware biztosÃ­tja a hozzÃ¡fÃ©rÃ©s-vezÃ©rlÃ©st
+router.get('/my-bookings', auth, async (req, res) => {
+    try {
+        // A kÃ©rÃ©st indÃ­tÃ³ szolgÃ¡ltatÃ³ azonosÃ­tÃ¡sa a token alapjÃ¡n, majd a relÃ¡ciÃ³k (populate) feloldÃ¡sa
+        const bookings = await Booking.find({ companyId: req.user.userId })
+            .populate('staffId', 'name')
+            .populate('serviceId', 'name duration price');
+            
+        res.status(200).json(bookings);
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a foglalÃ¡sok lekÃ©rdezÃ©sekor.', error: error.message });
+    }
+});
+
+// [GET] Bejelentkezett vendÃ©g sajÃ¡t foglalÃ¡sainak lekÃ©rÃ©se
+router.get('/guest-history', auth, async (req, res) => {
+    try {
+        const bookings = await Booking.find({ userId: req.user.userId })
+            .populate('companyId', 'name companyName')
+            .populate('serviceId', 'name price duration')
+            .populate('staffId', 'name');
+            
+        res.status(200).json(bookings);
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a vendÃ©g elÅ‘zmÃ©nyeinek lekÃ©rÃ©sekor.', error: error.message });
+    }
+});
+
+// [PATCH] FoglalÃ¡s stÃ¡tuszÃ¡nak mÃ³dosÃ­tÃ¡sa (ElfogadÃ¡s / ElutasÃ­tÃ¡s) Ã©s automatikus e-mail Ã©rtesÃ­tÃ©s kÃ¼ldÃ©se
+// VÃ©dett vÃ©gpont: a hitelesÃ­tett szolgÃ¡ltatÃ³ kezelheti a sajÃ¡t foglalÃ¡sait
+router.patch('/:id/status', auth, async (req, res) => {
+    try {
+        const { status } = req.body;
+        
+        // Csak Ã©rvÃ©nyes stÃ¡tuszÃ©rtÃ©keket fogadunk el a modell definÃ­ciÃ³ja alapjÃ¡n
+        if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
+            return res.status(400).json({ message: 'Ã‰rvÃ©nytelen stÃ¡tusz Ã©rtÃ©k.' });
+        }
+
+        // Az azonosÃ­tÃ³ alapjÃ¡n megkeressÃ¼k a foglalÃ¡st Ã©s frissÃ­tjÃ¼k a stÃ¡tuszt
+        // A populate metÃ³dusokkal feloldjuk a szolgÃ¡ltatÃ¡s Ã©s a munkatÃ¡rs nevÃ©t az e-mail sablonhoz
+        const updatedBooking = await Booking.findOneAndUpdate(
+            { _id: req.params.id },
+            { status },
+            { returnDocument: 'after' } 
+        ).populate('serviceId', 'name').populate('staffId', 'name');
+
+        if (!updatedBooking) {
+            return res.status(404).json({ message: 'A foglalÃ¡s nem talÃ¡lhatÃ³.' });
+        }
+
+        // Automatikus stÃ¡tuszvÃ¡ltÃ³ e-mail kikÃ¼ldÃ©se az Ã¼gyfÃ©l rÃ©szÃ©re
+        const emailAddress = updatedBooking.guestData?.email;
+        if (emailAddress) {
+            sendBookingStatusEmail({
+                toEmail: emailAddress,
+                guestName: updatedBooking.guestData?.name || 'VendÃ©gÃ¼nk',
+                serviceName: updatedBooking.serviceId?.name,
+                staffName: updatedBooking.staffId?.name,
+                date: new Date(updatedBooking.date).toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' }),
+                startTime: `${updatedBooking.startTime} - ${updatedBooking.endTime}`,
+                status: updatedBooking.status
+            });
+        }
+
+        res.status(200).json({ message: 'A foglalÃ¡s stÃ¡tusza frissÃ­tve.', booking: updatedBooking });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a stÃ¡tusz frissÃ­tÃ©sekor.', error: error.message });
+    }
+});
+
+// [DELETE] FoglalÃ¡s tÃ¶rlÃ©se ID alapjÃ¡n
+router.delete('/:id', auth, async (req, res) => {
+    try {
+        const deletedBooking = await Booking.findByIdAndDelete(req.params.id);
+        if (!deletedBooking) return res.status(404).json({ message: 'A foglalÃ¡s nem talÃ¡lhatÃ³.' });
+        res.status(200).json({ message: 'FoglalÃ¡s sikeresen tÃ¶rÃ¶lve.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a tÃ¶rlÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+module.exports = router;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\routes\service.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// SzolgÃ¡ltatÃ¡sok (Service) Ãºtvonalai Ã©s vÃ©gpontjai
+
+const express = require('express');
+const router = express.Router();
+const Service = require('../models/Service');
+const auth = require('../middleware/authMiddleware');
+
+// [POST] Ãšj szolgÃ¡ltatÃ¡s rÃ¶gzÃ­tÃ©se az adatbÃ¡zisban
+// VÃ©dett vÃ©gpont: az 'auth' middleware biztosÃ­tja a hitelesÃ­tÃ©st
+router.post('/', auth, async (req, res) => {
+    try {
+        const { name, duration, price, description } = req.body;
+
+        // Ãšj szolgÃ¡ltatÃ¡s entitÃ¡s pÃ©ldÃ¡nyosÃ­tÃ¡sa a kÃ©rÃ©sbÅ‘l Ã©rkezÅ‘ adatokkal
+        // A companyId a hitelesÃ­tett felhasznÃ¡lÃ³ (szolgÃ¡ltatÃ³) azonosÃ­tÃ³ja lesz a tokenbÅ‘l
+        const newService = new Service({
+            companyId: req.user.userId,
+            name,
+            duration,
+            price,
+            description
+        });
+
+        // EntitÃ¡s perzisztÃ¡lÃ¡sa az adatbÃ¡zisban
+        const savedService = await newService.save();
+
+        res.status(201).json({
+            message: 'A szolgÃ¡ltatÃ¡s sikeresen rÃ¶gzÃ­tve.',
+            service: savedService
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'KiszolgÃ¡lÃ³oldali hiba a szolgÃ¡ltatÃ¡s mentÃ©se sorÃ¡n.', error: error.message });
+    }
+});
+
+// [GET] Az Ã¶sszes szolgÃ¡ltatÃ¡s lekÃ©rÃ©se egy adott cÃ©ghez
+// Publikus vagy vÃ©dett vÃ©gpont, a frontend megjelenÃ­tÃ©sÃ©hez szÃ¼ksÃ©ges
+router.get('/company/:companyId', async (req, res) => {
+    try {
+        const services = await Service.find({ companyId: req.params.companyId });
+        res.status(200).json(services);
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a szolgÃ¡ltatÃ¡sok lekÃ©rdezÃ©sekor.', error: error.message });
+    }
+});
+
+
+// [DELETE] SzolgÃ¡ltatÃ¡s tÃ¶rlÃ©se ID alapjÃ¡n
+router.delete('/:id', auth, async (req, res) => {
+    try {
+        const deletedService = await Service.findByIdAndDelete(req.params.id);
+        if (!deletedService) {
+            return res.status(404).json({ message: 'A szolgÃ¡ltatÃ¡s nem talÃ¡lhatÃ³.' });
+        }
+        res.status(200).json({ message: 'SzolgÃ¡ltatÃ¡s sikeresen tÃ¶rÃ¶lve.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a tÃ¶rlÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+// [PUT] SzolgÃ¡ltatÃ¡s mÃ³dosÃ­tÃ¡sa ID alapjÃ¡n
+router.put('/:id', auth, async (req, res) => {
+    try {
+        const updatedService = await Service.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true } // Ez biztosÃ­tja, hogy a mÃ¡r frissÃ­tett adatokat kapjuk vissza
+        );
+        if (!updatedService) {
+            return res.status(404).json({ message: 'A szolgÃ¡ltatÃ¡s nem talÃ¡lhatÃ³.' });
+        }
+        res.status(200).json({ message: 'SzolgÃ¡ltatÃ¡s sikeresen frissÃ­tve.', service: updatedService });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a frissÃ­tÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+module.exports = router;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\routes\staff.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// MunkatÃ¡rsak (Staff) entitÃ¡s Ãºtvonalai Ã©s vÃ©gpontjai
+
+const express = require('express');
+const router = express.Router();
+const Staff = require('../models/Staff');
+const auth = require('../middleware/authMiddleware');
+
+// [POST] Ãšj munkatÃ¡rs profiljÃ¡nak Ã©s beosztÃ¡sÃ¡nak rÃ¶gzÃ­tÃ©se
+// VÃ©dett vÃ©gpont: a hitelesÃ­tett szolgÃ¡ltatÃ³ (company) hozhat lÃ©tre Ãºj rekordot
+router.post('/', auth, async (req, res) => {
+    try {
+        const { name, services, availability } = req.body;
+
+        const newStaff = new Staff({
+            companyId: req.user.userId,
+            name,
+            services,
+            availability
+        });
+
+        const savedStaff = await newStaff.save();
+
+        res.status(201).json({
+            message: 'MunkatÃ¡rs profilja sikeresen lÃ©trehozva.',
+            staff: savedStaff
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'KiszolgÃ¡lÃ³oldali hiba a munkatÃ¡rs rÃ¶gzÃ­tÃ©sekor.', error: error.message });
+    }
+});
+
+// [GET] Egy adott szolgÃ¡ltatÃ³hoz (companyId) tartozÃ³ Ã¶sszes munkatÃ¡rs lekÃ©rdezÃ©se
+// Publikus vÃ©gpont, az Ã¼gyfÃ©loldali naptÃ¡r generÃ¡lÃ¡sÃ¡hoz Ã©s idÅ‘pontfoglalÃ¡shoz
+router.get('/company/:companyId', async (req, res) => {
+    try {
+        // A populate('services') kiterjeszti a szolgÃ¡ltatÃ¡sok azonosÃ­tÃ³it a teljes szolgÃ¡ltatÃ¡s objektumra
+        const staffMembers = await Staff.find({ companyId: req.params.companyId }).populate('services');
+        res.status(200).json(staffMembers);
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a munkatÃ¡rsak lekÃ©rdezÃ©sekor.', error: error.message });
+    }
+});
+
+// [DELETE] MunkatÃ¡rs tÃ¶rlÃ©se ID alapjÃ¡n
+router.delete('/:id', auth, async (req, res) => {
+    try {
+        const deletedStaff = await Staff.findByIdAndDelete(req.params.id);
+        if (!deletedStaff) return res.status(404).json({ message: 'A munkatÃ¡rs nem talÃ¡lhatÃ³.' });
+        res.status(200).json({ message: 'MunkatÃ¡rs sikeresen tÃ¶rÃ¶lve.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a tÃ¶rlÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+// [PUT] MunkatÃ¡rs mÃ³dosÃ­tÃ¡sa ID alapjÃ¡n
+router.put('/:id', auth, async (req, res) => {
+    try {
+        const updatedStaff = await Staff.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true }
+        );
+        if (!updatedStaff) {
+            return res.status(404).json({ message: 'A munkatÃ¡rs nem talÃ¡lhatÃ³.' });
+        }
+        res.status(200).json({ message: 'MunkatÃ¡rs sikeresen frissÃ­tve.', staff: updatedStaff });
+    } catch (error) {
+        res.status(500).json({ message: 'Hiba a frissÃ­tÃ©s sorÃ¡n.', error: error.message });
+    }
+});
+
+module.exports = router;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\utils\sendEmail.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// E-mail kÃ¼ldÅ‘ segÃ©dmodul (Nodemailer) a foglalÃ¡si Ã©rtesÃ­tÃ©sek kÃ©zbesÃ­tÃ©sÃ©hez
+
+const nodemailer = require('nodemailer');
+
+const sendBookingStatusEmail = async ({ toEmail, guestName, serviceName, staffName, date, startTime, status }) => {
+    // Ha nincs beÃ¡llÃ­tva az .env-ben e-mail fiÃ³k, nem Ã¡llÃ­tjuk meg a szervert
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !toEmail) {
+        console.log('E-mail kÃ¼ldÃ©s kihagyva: hiÃ¡nyzÃ³ SMTP beÃ¡llÃ­tÃ¡s vagy cÃ­mzett.');
+        return;
+    }
+
+    try {
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+
+        const isConfirmed = status === 'confirmed';
+        const subject = isConfirmed
+            ? 'IdÅ‘pontfoglalÃ¡s visszaigazolva!'
+            : 'IdÅ‘pontfoglalÃ¡s stÃ¡tusza: ElutasÃ­tva / Lemondva';
+
+        const statusColor = isConfirmed ? '#16a34a' : '#dc2626';
+        const statusText = isConfirmed
+            ? 'Ã–rÃ¶mmel Ã©rtesÃ­tÃ¼nk, hogy a foglalÃ¡sodat jÃ³vÃ¡hagytuk! VÃ¡runk szeretettel.'
+            : 'SajnÃ¡lattal Ã©rtesÃ­tÃ¼nk, hogy a megjelÃ¶lt idÅ‘pontot nem tudjuk biztosÃ­tani. KÃ©rjÃ¼k, vÃ¡lassz mÃ¡sik idÅ‘pontot a felÃ¼leten!';
+
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <h2 style="color: #2563eb; margin-top: 0;">Kedves ${guestName}!</h2>
+                <p style="font-size: 16px; color: ${statusColor}; font-weight: bold;">${statusText}</p>
+                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <h3 style="margin-bottom: 10px;">A foglalÃ¡s rÃ©szletei:</h3>
+                <ul style="line-height: 1.8; color: #334155;">
+                    <li><strong>SzolgÃ¡ltatÃ¡s:</strong> ${serviceName || '-'}</li>
+                    <li><strong>MunkatÃ¡rs:</strong> ${staffName || 'Automatikus beosztÃ¡s'}</li>
+                    <li><strong>DÃ¡tum:</strong> ${date}</li>
+                    <li><strong>IdÅ‘pont:</strong> ${startTime}</li>
+                </ul>
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 30px;">
+                    Ez egy automatikus Ã¼zenet az IdÅ‘pontfoglalÃ³ RendszerbÅ‘l.
+                </p>
+            </div>
+        `;
+
+        await transporter.sendMail({
+            from: `"IdÅ‘pontfoglalÃ³ Rendszer" <${process.env.EMAIL_USER}>`,
+            to: toEmail,
+            subject,
+            html: htmlContent
+        });
+    } catch (error) {
+        console.error('Hiba az e-mail kikÃ¼ldÃ©sekor:', error);
+    }
+};
+
+module.exports = sendBookingStatusEmail;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\package.json =================
+
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.9.4",
+    "nodemailer": "^10.2.1"
+  }
+}
+
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\backend\server.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (YB3IUF)
+// Szakdolgozat - IdÅ‘pontfoglalÃ³ Rendszer Backend
+
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose'); // Mongoose beimportÃ¡lÃ¡sa
+require('dotenv').config();
+
+// Ãštvonalak beimportÃ¡lÃ¡sa
+const authRoutes = require('./routes/auth');
+const serviceRoutes = require('./routes/service');
+const staffRoutes = require('./routes/staff');
+const bookingRoutes = require('./routes/booking');
+
+// InicializÃ¡ljuk a szerver alkalmazÃ¡st
+const app = express();
+
+// Middleware-ek beÃ¡llÃ­tÃ¡sa
+app.use(cors());
+app.use(express.json());
+
+// AdatbÃ¡zis csatlakozÃ¡s felÃ©pÃ­tÃ©se
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('Sikeres csatlakozÃ¡s a MongoDB adatbÃ¡zishoz!'))
+  .catch((err) => console.log('Hiba az adatbÃ¡zis csatlakozÃ¡sakor:', err));
+
+// Ãštvonalak (API Endpoints) bekÃ¶tÃ©se
+app.use('/api/auth', authRoutes); // Minden, ami /api/auth-al kezdÅ‘dik, az auth.js-be megy
+app.use('/api/services', serviceRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/bookings', bookingRoutes);
+
+// Szerver indÃ­tÃ¡sa
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`A szerver fut a http://localhost:${PORT} cÃ­men...`);
+});
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\public\manifest.json =================
+
+{
+  "short_name": "React App",
+  "name": "Create React App Sample",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
+
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\api\axiosConfig.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// Axios kliens konfigurÃ¡ciÃ³ automatikus JWT token csatolÃ¡ssal Ã©s lejÃ¡rat-kezelÃ©ssel
+
+import axios from 'axios';
+
+const axiosInstance = axios.create({
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+    headers: {
+        'Content-Type': 'application/json'
+    }
+});
+
+// KimenÅ‘ kÃ©rÃ©sek elfogÃ¡sa: JWT token hozzÃ¡adÃ¡sa az Authorization fejlÃ©chez
+axiosInstance.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
+// BeÃ©rkezÅ‘ vÃ¡laszok elfogÃ¡sa: 401-es (lejÃ¡rt/Ã©rvÃ©nytelen token) hiba esetÃ©n kijelentkeztetÃ©s
+axiosInstance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+
+            // Publikus foglalÃ¡si oldalon Ã©s a login oldalon nem irÃ¡nyÃ­tunk Ã¡t kÃ©nyszerÃ­tve
+            const currentPath = window.location.pathname;
+            if (!currentPath.startsWith('/login') && !currentPath.startsWith('/foglalas')) {
+                window.location.href = '/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
+export default axiosInstance;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\components\Footer.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// GlobÃ¡lis lÃ¡blÃ©c (Footer) komponens az alkalmazÃ¡s alsÃ³ szekciÃ³jÃ¡nak megjelenÃ­tÃ©sÃ©hez
+
+import React from 'react';
+import { Box, Typography, Container } from '@mui/material';
+
+const Footer = () => {
+    return (
+        <Box component="footer" sx={{ bgcolor: 'background.paper', py: 3, mt: 'auto', borderTop: '1px solid #e5e7eb' }}>
+            <Container maxWidth="lg">
+                <Typography variant="body2" color="text.secondary" align="center">
+                    Â© {new Date().getFullYear()} IdÅ‘pontfoglalÃ³ Rendszer. KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (YB3IUF)
+                </Typography>
+            </Container>
+        </Box>
+    );
+};
+
+export default Footer;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\components\Navbar.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// FelsÅ‘ navigÃ¡ciÃ³s sÃ¡v Ã©s tÃ©ma vÃ¡ltÃ³
+
+import React from 'react';
+import { AppBar, Toolbar, Typography, Button, Box, IconButton } from '@mui/material';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+
+const Navbar = ({ toggleColorMode, mode }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const isAuthenticated = !!localStorage.getItem('token');
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        navigate('/login');
+    };
+
+    // A publikus foglalÃ³ oldalon nem jelenÃ­tjÃ¼k meg a Navbart
+    if (location.pathname.startsWith('/foglalas')) return null;
+
+    return (
+        <AppBar position="static" color="inherit" elevation={1} sx={{ bgcolor: 'background.paper' }}>
+            <Toolbar>
+                <Typography variant="h6" color="primary" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+                    IdÅ‘pontfoglalÃ³
+                </Typography>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <IconButton onClick={toggleColorMode} color="inherit" sx={{ mr: 2 }}>
+                        {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                    </IconButton>
+
+                    {isAuthenticated ? (
+                        <>
+                            <Button color="inherit" component={Link} to="/">KezdÅ‘lap</Button>
+                            <Button color="inherit" component={Link} to="/services">SzolgÃ¡ltatÃ¡sok</Button>
+                            <Button color="inherit" component={Link} to="/staff">MunkatÃ¡rsak</Button>
+                            <Button color="inherit" component={Link} to="/bookings">FoglalÃ¡sok</Button>
+                            <Button color="inherit" component={Link} to="/profile">Profil</Button>
+                            <Button color="error" variant="outlined" sx={{ ml: 2 }} onClick={handleLogout}>
+                                KijelentkezÃ©s
+                            </Button>
+                        </>
+                    ) : (
+                        <Button color="primary" variant="contained" component={Link} to="/login">
+                            BejelentkezÃ©s
+                        </Button>
+                    )}
+                </Box>
+            </Toolbar>
+        </AppBar>
+    );
+};
+
+export default Navbar;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\components\ProtectedRoute.js =================
+
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+
+const isTokenValid = (token) => {
+    if (!token) return false;
+    try {
+        const payloadBase64 = token.split('.')[1];
+        const decodedPayload = JSON.parse(atob(payloadBase64));
+        if (decodedPayload.exp && decodedPayload.exp * 1000 < Date.now()) return false;
+        return true;
+    } catch (error) {
+        return false;
+    }
+};
+
+// Ãšj paramÃ©ter: allowedRoles (engedÃ©lyezett szerepkÃ¶rÃ¶k listÃ¡ja)
+const ProtectedRoute = ({ children, allowedRoles }) => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+
+    if (!isTokenValid(token) || !userStr) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        return <Navigate to="/login" replace />;
+    }
+
+    const user = JSON.parse(userStr);
+    const userRole = user.role || 'user'; // AlapÃ©rtelmezett vendÃ©g szerepkÃ¶r
+
+    // Ha a route vÃ©dett (pl. csak cÃ©ges), Ã©s a felhasznÃ¡lÃ³ szerepkÃ¶re nincs engedÃ©lyezve
+    if (allowedRoles && !allowedRoles.includes(userRole)) {
+        if (userRole === 'user' || userRole === 'guest') {
+            return <Navigate to="/vendeg-profil" replace />;
+        }
+        return <Navigate to="/" replace />;
+    }
+
+    return children;
+};
+
+export default ProtectedRoute;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Bookings.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// BeÃ©rkezett foglalÃ¡sok listÃ¡zÃ¡sa, stÃ¡tuszkezelÃ©s Ã©s regisztrÃ¡lt Ã¼gyfelek foglalÃ¡si elÅ‘zmÃ©nyei
+
+import React, { useState, useEffect } from 'react';
+import {
+    Container, Typography, Box, Paper, List, ListItem,
+    CircularProgress, Chip, Button, Collapse, Divider
+} from '@mui/material';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import HistoryIcon from '@mui/icons-material/History';
+import axiosInstance from '../api/axiosConfig';
+
+const Bookings = () => {
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [openHistoryId, setOpenHistoryId] = useState(null);
+
+    useEffect(() => {
+        const fetchBookings = async () => {
+            try {
+                const response = await axiosInstance.get('/bookings/my-bookings');
+                setBookings(response.data);
+            } catch (error) {
+                console.error('Hiba a foglalÃ¡sok betÃ¶ltÃ©sekor:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchBookings();
+    }, []);
+
+    // FoglalÃ¡s stÃ¡tuszÃ¡nak frissÃ­tÃ©se (elfogadÃ¡s vagy elutasÃ­tÃ¡s)
+    const updateBookingStatus = async (id, newStatus) => {
+        try {
+            await axiosInstance.patch(`/bookings/${id}/status`, { status: newStatus });
+            setBookings(bookings.map((booking) =>
+                booking._id === id ? { ...booking, status: newStatus } : booking
+            ));
+        } catch (error) {
+            console.error('Hiba a stÃ¡tusz frissÃ­tÃ©sekor:', error);
+        }
+    };
+
+    // FoglalÃ¡s vÃ©gleges tÃ¶rlÃ©se az adatbÃ¡zisbÃ³l
+    const handleDeleteBooking = async (id) => {
+        if (!window.confirm('Biztosan tÃ¶rÃ¶lni szeretnÃ©d ezt a foglalÃ¡st a rendszerbÅ‘l?')) return;
+
+        try {
+            await axiosInstance.delete(`/bookings/${id}`);
+            setBookings(bookings.filter((booking) => booking._id !== id));
+        } catch (error) {
+            console.error('Hiba a tÃ¶rlÃ©s sorÃ¡n:', error);
+        }
+    };
+
+    // StÃ¡tusz jelvÃ©ny (Chip) meghatÃ¡rozÃ¡sa a foglalÃ¡s Ã¡llapota alapjÃ¡n
+    const getStatusChip = (status) => {
+        switch (status) {
+            case 'pending':
+                return <Chip label="JÃ³vÃ¡hagyÃ¡sra vÃ¡r" color="warning" size="small" />;
+            case 'confirmed':
+                return <Chip label="Elfogadva" color="success" size="small" />;
+            case 'cancelled':
+                return <Chip label="ElutasÃ­tva" color="error" size="small" />;
+            default:
+                return <Chip label="Ismeretlen" size="small" />;
+        }
+    };
+
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    // RegisztrÃ¡lt Ã¼gyfÃ©l korÃ¡bbi foglalÃ¡sainak kigyÅ±jtÃ©se userId vagy e-mail egyezÃ©s alapjÃ¡n
+    const getCustomerHistory = (currentBooking) => {
+        const email = currentBooking.guestData?.email;
+        const userId = currentBooking.userId;
+
+        return bookings.filter((b) => {
+            if (b._id === currentBooking._id) return false;
+            if (userId && b.userId && String(b.userId) === String(userId)) return true;
+            if (email && b.guestData?.email && b.guestData.email.toLowerCase() === email.toLowerCase()) return true;
+            return false;
+        });
+    };
+
+    if (loading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+                <CircularProgress />
+            </Box>
+        );
+    }
+
+    return (
+        <Container maxWidth="md">
+            <Paper elevation={3} sx={{ mt: 5, mb: 5, p: 4 }}>
+                <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">
+                    BeÃ©rkezett FoglalÃ¡sok
+                </Typography>
+
+                <List>
+                    {bookings.length === 0 ? (
+                        <Typography color="textSecondary">Jelenleg nincs egyetlen foglalÃ¡s sem a rendszerben.</Typography>
+                    ) : (
+                        bookings.map((booking) => {
+                            const isRegistered = Boolean(
+                                booking.userId || booking.isRegisteredUser || booking.guestData?.isRegistered
+                            );
+                            const customerHistory = isRegistered ? getCustomerHistory(booking) : [];
+                            const isHistoryOpen = openHistoryId === booking._id;
+
+                            return (
+                                <ListItem
+                                    key={booking._id}
+                                    divider
+                                    sx={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', py: 2 }}
+                                >
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                                        <Box>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+                                                <Typography variant="subtitle1" fontWeight="bold">
+                                                    {formatDate(booking.date)} | {booking.startTime} - {booking.endTime}
+                                                </Typography>
+
+                                                {isRegistered ? (
+                                                    <Chip
+                                                        icon={<VerifiedUserIcon />}
+                                                        label="Bejelentkezett felhasznÃ¡lÃ³"
+                                                        color="info"
+                                                        size="small"
+                                                    />
+                                                ) : (
+                                                    <Chip
+                                                        label="VendÃ©g (nem regisztrÃ¡lt)"
+                                                        variant="outlined"
+                                                        size="small"
+                                                    />
+                                                )}
+                                            </Box>
+
+                                            <Typography variant="body2" color="text.primary">
+                                                <strong>VendÃ©g:</strong> {booking.guestData?.name || 'NÃ©vtelen'} ({booking.guestData?.phone || 'Nincs telefon'}, {booking.guestData?.email || 'Nincs e-mail'})
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                <strong>SzolgÃ¡ltatÃ¡s:</strong> {booking.serviceId?.name}
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                <strong>MunkatÃ¡rs:</strong> {booking.staffId?.name}
+                                            </Typography>
+
+                                            {/* Az elÅ‘zmÃ©nyek gomb kizÃ¡rÃ³lag bejelentkezett felhasznÃ¡lÃ³k foglalÃ¡sainÃ¡l jelenik meg */}
+                                            {isRegistered && (
+                                                <Button
+                                                    size="small"
+                                                    startIcon={<HistoryIcon />}
+                                                    sx={{ mt: 1 }}
+                                                    onClick={() => setOpenHistoryId(isHistoryOpen ? null : booking._id)}
+                                                >
+                                                    ElÅ‘zmÃ©nyek ({customerHistory.length} korÃ¡bbi foglalÃ¡s)
+                                                </Button>
+                                            )}
+                                        </Box>
+
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                                            {getStatusChip(booking.status)}
+
+                                            {booking.status === 'pending' && (
+                                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                                    <Button
+                                                        variant="contained"
+                                                        color="success"
+                                                        size="small"
+                                                        onClick={() => updateBookingStatus(booking._id, 'confirmed')}
+                                                    >
+                                                        Elfogad
+                                                    </Button>
+                                                    <Button
+                                                        variant="outlined"
+                                                        color="error"
+                                                        size="small"
+                                                        onClick={() => updateBookingStatus(booking._id, 'cancelled')}
+                                                    >
+                                                        ElutasÃ­t
+                                                    </Button>
+                                                </Box>
+                                            )}
+
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                onClick={() => handleDeleteBooking(booking._id)}
+                                            >
+                                                TÃ¶rlÃ©s
+                                            </Button>
+                                        </Box>
+                                    </Box>
+
+                                    {/* LenyÃ­lÃ³ elÅ‘zmÃ©ny-panel regisztrÃ¡lt felhasznÃ¡lÃ³khoz */}
+                                    {isRegistered && (
+                                        <Collapse in={isHistoryOpen} timeout="auto" unmountOnExit>
+                                            <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: 'action.hover' }}>
+                                                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                                    ÃœgyfÃ©l korÃ¡bbi foglalÃ¡sai a rendszerben:
+                                                </Typography>
+                                                <Divider sx={{ mb: 1 }} />
+                                                {customerHistory.length === 0 ? (
+                                                    <Typography variant="body2" color="textSecondary">
+                                                        Ennek a regisztrÃ¡lt felhasznÃ¡lÃ³nak ez az elsÅ‘ foglalÃ¡sa.
+                                                    </Typography>
+                                                ) : (
+                                                    customerHistory.map((hist) => (
+                                                        <Box
+                                                            key={hist._id}
+                                                            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}
+                                                        >
+                                                            <Typography variant="body2">
+                                                                {formatDate(hist.date)} ({hist.startTime} - {hist.endTime}) â€” {hist.serviceId?.name} ({hist.staffId?.name})
+                                                            </Typography>
+                                                            {getStatusChip(hist.status)}
+                                                        </Box>
+                                                    ))
+                                                )}
+                                            </Box>
+                                        </Collapse>
+                                    )}
+                                </ListItem>
+                            );
+                        })
+                    )}
+                </List>
+            </Paper>
+        </Container>
+    );
+};
+
+export default Bookings;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\GuestDashboard.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// VendÃ©g (felhasznÃ¡lÃ³i) mÅ±szerfal: Profil szerkesztÃ©se Ã©s foglalÃ¡si elÅ‘zmÃ©nyek megtekintÃ©se
+
+import React, { useState, useEffect } from 'react';
+import {
+    Container, Typography, Box, Paper, TextField, Button,
+    Alert, CircularProgress, List, ListItem, Divider, Chip, IconButton
+} from '@mui/material';
+import LogoutIcon from '@mui/icons-material/Logout';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import { useNavigate } from 'react-router-dom';
+import axiosInstance from '../api/axiosConfig';
+
+const GuestDashboard = ({ toggleColorMode, mode }) => {
+    const navigate = useNavigate();
+    const [userForm, setUserForm] = useState({ name: '', email: '', phone: '', password: '' });
+    const [history, setHistory] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [feedback, setFeedback] = useState({ type: '', message: '' });
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchGuestData = async () => {
+            try {
+                // 1. Profiladatok lekÃ©rÃ©se
+                const userRes = await axiosInstance.get('/auth/me');
+                setUserForm({
+                    name: userRes.data.name || '',
+                    email: userRes.data.email || '',
+                    phone: userRes.data.phone || '',
+                    password: ''
+                });
+
+                // 2. KorÃ¡bbi foglalÃ¡sok lekÃ©rÃ©se
+                const historyRes = await axiosInstance.get('/bookings/guest-history');
+                setHistory(historyRes.data);
+            } catch (error) {
+                console.error('Hiba az adatok betÃ¶ltÃ©sekor', error);
+                setFeedback({ type: 'error', message: 'Hiba tÃ¶rtÃ©nt az adatok lekÃ©rÃ©sekor.' });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchGuestData();
+    }, []);
+
+    const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            await axiosInstance.put('/auth/profile', userForm);
+            setFeedback({ type: 'success', message: 'Profiladatok sikeresen frissÃ­tve!' });
+            setUserForm(prev => ({ ...prev, password: '' })); // JelszÃ³ mezÅ‘ Ã¼rÃ­tÃ©se mentÃ©s utÃ¡n
+        } catch (error) {
+            // A backend pontos hibaÃ¼zenetÃ©nek beolvasÃ¡sa, vagy Ã¡ltalÃ¡nos hiba kiÃ­rÃ¡sa
+            setFeedback({
+                type: 'error',
+                message: error.response?.data?.message || 'Hiba tÃ¶rtÃ©nt a profil frissÃ­tÃ©sekor.'
+            });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login');
+    };
+
+    const getStatusChip = (status) => {
+        switch (status) {
+            case 'pending': return <Chip label="FÃ¼ggÅ‘ben" color="warning" size="small" />;
+            case 'confirmed': return <Chip label="Elfogadva" color="success" size="small" />;
+            case 'cancelled': return <Chip label="ElutasÃ­tva" color="error" size="small" />;
+            default: return <Chip label="Ismeretlen" size="small" />;
+        }
+    };
+
+    if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
+
+    return (
+        <Container maxWidth="md" sx={{ mt: 5, mb: 5 }}>
+            {/* FejlÃ©c kijelentkezÃ©s gombbal */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 4 }}>
+                <Typography variant="h4" color="primary" fontWeight="bold">
+                    ÃœdvÃ¶zlÃ¼nk, {userForm.name.split(' ')[0]}!
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                    {toggleColorMode && (
+                        <IconButton onClick={toggleColorMode} color="inherit" sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                        </IconButton>
+                    )}
+                    <Button variant="outlined" color="error" startIcon={<LogoutIcon />} onClick={handleLogout}>
+                        KijelentkezÃ©s
+                    </Button>
+                </Box>
+            </Box>
+
+            {feedback.message && (
+                <Alert severity={feedback.type} sx={{ mb: 3 }}>{feedback.message}</Alert>
+            )}
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.5fr' }, gap: 4 }}>
+                
+                {/* BAL OLDAL: Profil szerkesztÃ©se */}
+                <Paper elevation={3} sx={{ p: 3, height: 'fit-content' }}>
+                    <Typography variant="h6" fontWeight="bold" gutterBottom>SzemÃ©lyes Adatok</Typography>
+                    <Divider sx={{ mb: 3 }} />
+                    <Box component="form" onSubmit={handleUpdateProfile} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField
+                            label="Teljes nÃ©v" required fullWidth
+                            value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                        />
+                        <TextField
+                            label="E-mail cÃ­m" type="email" required fullWidth
+                            value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                        />
+                        <TextField
+                            label="TelefonszÃ¡m" fullWidth
+                            value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                        />
+                        <TextField
+                            label="Ãšj jelszÃ³ (opcionÃ¡lis)" type="password" fullWidth
+                            placeholder="Hagyd Ã¼resen, ha nem vÃ¡ltoztatod meg"
+                            value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                        />
+                        <Button type="submit" variant="contained" color="primary" disabled={submitting} sx={{ mt: 1 }}>
+                            {submitting ? 'MentÃ©s...' : 'Adatok FrissÃ­tÃ©se'}
+                        </Button>
+                    </Box>
+                </Paper>
+
+                {/* JOBB OLDAL: FoglalÃ¡si elÅ‘zmÃ©nyek */}
+                <Paper elevation={3} sx={{ p: 3 }}>
+                    <Typography variant="h6" fontWeight="bold" gutterBottom>Eddigi FoglalÃ¡saim</Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    
+                    <List disablePadding>
+                        {history.length === 0 ? (
+                            <Typography color="textSecondary" sx={{ py: 2 }}>
+                                MÃ©g nem foglaltÃ¡l idÅ‘pontot egyetlen szolgÃ¡ltatÃ³nÃ¡l sem.
+                            </Typography>
+                        ) : (
+                            history.map((booking) => (
+                                <ListItem key={booking._id} divider sx={{ px: 0, py: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <Box>
+                                        <Typography variant="subtitle1" fontWeight="bold" color="primary">
+                                            {booking.companyId?.name || booking.companyId?.companyName || 'Ismeretlen szolgÃ¡ltatÃ³'}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                            <strong>DÃ¡tum:</strong> {new Date(booking.date).toLocaleDateString('hu-HU')} ({booking.startTime} - {booking.endTime})
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            <strong>SzolgÃ¡ltatÃ¡s:</strong> {booking.serviceId?.name} ({booking.serviceId?.price} Ft)
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            <strong>MunkatÃ¡rs:</strong> {booking.staffId?.name || '-'}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ ml: 2, mt: 0.5 }}>
+                                        {getStatusChip(booking.status)}
+                                    </Box>
+                                </ListItem>
+                            ))
+                        )}
+                    </List>
+                </Paper>
+            </Box>
+        </Container>
+    );
+};
+
+export default GuestDashboard;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Home.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// VezÃ©rlÅ‘pult kezdÅ‘lapja (Home page) - Napi, fÃ¼ggÅ‘ben lÃ©vÅ‘ Ã©s havi statisztikÃ¡k, valamint gyorsnÃ©zeti listÃ¡k
+
+import React, { useState, useEffect } from 'react';
+import {
+    Container, Typography, Card, CardContent, Box, CircularProgress,
+    Button, TextField, Snackbar, Alert, useTheme, List, ListItem, ListItemText, Divider
+} from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import axiosInstance from '../api/axiosConfig';
+
+const Home = () => {
+    const [stats, setStats] = useState({ today: 0, pending: 0, monthly: 0 });
+    const [companyId, setCompanyId] = useState('');
+    const [staffList, setStaffList] = useState([]);
+    const [servicesList, setServicesList] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [snackbarOpen, setSnackbarOpen] = useState(false);
+
+    const navigate = useNavigate();
+    const theme = useTheme();
+    const isDark = theme.palette.mode === 'dark';
+
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            try {
+                const userRes = await axiosInstance.get('/auth/me');
+                const cId = userRes.data._id;
+                setCompanyId(cId);
+
+                const [bookingsRes, staffRes, servicesRes] = await Promise.all([
+                    axiosInstance.get('/bookings/my-bookings'),
+                    axiosInstance.get(`/staff/company/${cId}`),
+                    axiosInstance.get(`/services/company/${cId}`)
+                ]);
+
+                const bookings = bookingsRes.data;
+                setStaffList(staffRes.data);
+                setServicesList(servicesRes.data);
+
+                // Mai dÃ¡tum Ã©s aktuÃ¡lis hÃ³nap elÅ‘tag (YYYY-MM) elÅ‘Ã¡llÃ­tÃ¡sa a szÅ±rÃ©shez
+                const dateObj = new Date();
+                const year = dateObj.getFullYear();
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getDate()).padStart(2, '0');
+
+                const todayStr = `${year}-${month}-${day}`;
+                const currentMonthPrefix = `${year}-${month}`;
+
+                const pendingCount = bookings.filter((b) => b.status === 'pending').length;
+                const todayCount = bookings.filter((b) => b.date?.startsWith(todayStr) && b.status !== 'cancelled').length;
+                // Az adott cÃ©g aktuÃ¡lis hÃ³napra esÅ‘, nem lemondott foglalÃ¡sainak szÃ¡ma
+                const monthlyCount = bookings.filter((b) => b.date?.startsWith(currentMonthPrefix) && b.status !== 'cancelled').length;
+
+                setStats({ today: todayCount, pending: pendingCount, monthly: monthlyCount });
+            } catch (error) {
+                console.error('Hiba az adatok betÃ¶ltÃ©sekor:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDashboardData();
+    }, []);
+
+    const handleCopyLink = () => {
+        const link = `${window.location.origin}/foglalas/${companyId}`;
+        navigator.clipboard.writeText(link);
+        setSnackbarOpen(true);
+    };
+
+    if (loading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+                <CircularProgress />
+            </Box>
+        );
+    }
+
+    const publicLink = `${window.location.origin}/foglalas/${companyId}`;
+
+    const cardColors = {
+        today: {
+            bg: isDark ? 'rgba(37, 99, 235, 0.15)' : '#e3f2fd',
+            text: isDark ? '#93c5fd' : 'textSecondary',
+            num: isDark ? '#60a5fa' : 'primary.main'
+        },
+        pending: {
+            bg: isDark ? 'rgba(249, 115, 22, 0.15)' : '#fff3e0',
+            text: isDark ? '#fdba74' : 'textSecondary',
+            num: isDark ? '#fb923c' : 'warning.main'
+        },
+        monthly: {
+            bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#e8f5e9',
+            text: isDark ? '#86efac' : 'textSecondary',
+            num: isDark ? '#4ade80' : 'success.main'
+        }
+    };
+
+    // KÃ¶zÃ¶s stÃ­lus a kattinthatÃ³ statisztikai kÃ¡rtyÃ¡khoz
+    const statCardStyle = (bgColor) => ({
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        p: 2,
+        bgcolor: bgColor,
+        cursor: 'pointer',
+        transition: 'transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
+        '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: 6
+        }
+    });
+
+    return (
+        <Container maxWidth={false} sx={{ mt: 5, mb: 5, px: { xs: 2, md: 4, lg: 6 } }}>
+            <Typography variant="h4" gutterBottom color="primary" fontWeight="bold">
+                ÃttekintÃ©s
+            </Typography>
+            <Typography variant="subtitle1" gutterBottom sx={{ mb: 4 }}>
+                ÃœdvÃ¶zlÃ¼nk a vezÃ©rlÅ‘pulton! Itt lÃ¡thatod a rendszer legfontosabb aktuÃ¡lis adatait.
+            </Typography>
+
+            <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+                gap: 4,
+                width: '100%'
+            }}>
+                {/* BAL OLDAL: Publikus link megosztÃ¡sa Ã©s kattinthatÃ³ statisztikai kÃ¡rtyÃ¡k */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <Card elevation={3} sx={{ width: '100%', p: 3, borderLeft: '5px solid #2563eb' }}>
+                        <CardContent>
+                            <Typography variant="h5" gutterBottom fontWeight="bold">A Te publikus foglalÃ¡si linked</Typography>
+                            <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                                Ezt a linket oszd meg a vendÃ©geiddel, hogy idÅ‘pontot tudjanak foglalni hozzÃ¡d.
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'center' }}>
+                                <TextField fullWidth variant="outlined" value={publicLink} InputProps={{ readOnly: true }} />
+                                <Button
+                                    variant="contained" color="primary" size="large" onClick={handleCopyLink}
+                                    sx={{ minWidth: '160px', height: '56px', width: { xs: '100%', sm: 'auto' } }}
+                                >
+                                    Link MÃ¡solÃ¡sa
+                                </Button>
+                            </Box>
+                        </CardContent>
+                    </Card>
+
+                    <Box sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+                        gap: 3,
+                        flexGrow: 1,
+                        width: '100%'
+                    }}>
+                        <Card elevation={3} onClick={() => navigate('/bookings')} sx={statCardStyle(cardColors.today.bg)}>
+                            <CardContent sx={{ textAlign: 'center', p: 2, '&:last-child': { pb: 2 } }}>
+                                <Typography variant="caption" display="block" sx={{ color: cardColors.today.text, mb: 1, fontWeight: 'bold' }}>
+                                    MAI FOGLALÃSOK
+                                </Typography>
+                                <Typography variant="h3" sx={{ color: cardColors.today.num, fontWeight: 'bold' }}>
+                                    {stats.today}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+
+                        <Card elevation={3} onClick={() => navigate('/bookings')} sx={statCardStyle(cardColors.pending.bg)}>
+                            <CardContent sx={{ textAlign: 'center', p: 2, '&:last-child': { pb: 2 } }}>
+                                <Typography variant="caption" display="block" sx={{ color: cardColors.pending.text, mb: 1, fontWeight: 'bold' }}>
+                                    JÃ“VÃHAGYÃSRA VÃR
+                                </Typography>
+                                <Typography variant="h3" sx={{ color: cardColors.pending.num, fontWeight: 'bold' }}>
+                                    {stats.pending}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+
+                        <Card elevation={3} onClick={() => navigate('/bookings')} sx={statCardStyle(cardColors.monthly.bg)}>
+                            <CardContent sx={{ textAlign: 'center', p: 2, '&:last-child': { pb: 2 } }}>
+                                <Typography variant="caption" display="block" sx={{ color: cardColors.monthly.text, mb: 1, fontWeight: 'bold' }}>
+                                    HAVI FOGLALÃSOK
+                                </Typography>
+                                <Typography variant="h3" sx={{ color: cardColors.monthly.num, fontWeight: 'bold' }}>
+                                    {stats.monthly}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+                    </Box>
+                </Box>
+
+                {/* JOBB OLDAL: MunkatÃ¡rsak Ã©s szolgÃ¡ltatÃ¡sok gyorslistÃ¡ja */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <Card elevation={3} sx={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '220px', maxHeight: '250px' }}>
+                        <Box sx={{ p: 2, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : '#f8fafc', borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="primary">MunkatÃ¡rsak</Typography>
+                        </Box>
+                        <CardContent sx={{ flex: 1, overflowY: 'auto', p: 0, '&:last-child': { pb: 0 } }}>
+                            <List disablePadding>
+                                {staffList.length === 0 ? (
+                                    <Typography sx={{ p: 2 }} color="textSecondary" variant="body2">Nincs mÃ©g rÃ¶gzÃ­tve munkatÃ¡rs.</Typography>
+                                ) : (
+                                    staffList.map((staff, index) => (
+                                        <React.Fragment key={staff._id}>
+                                            <ListItem>
+                                                <ListItemText
+                                                    primary={<Typography variant="body1" fontWeight="bold">{staff.name}</Typography>}
+                                                    secondary={`${staff.availability?.workingHours?.length || 0} munkanap/hÃ©t`}
+                                                />
+                                            </ListItem>
+                                            {index < staffList.length - 1 && <Divider />}
+                                        </React.Fragment>
+                                    ))
+                                )}
+                            </List>
+                        </CardContent>
+                    </Card>
+
+                    <Card elevation={3} sx={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '220px', maxHeight: '250px' }}>
+                        <Box sx={{ p: 2, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : '#f8fafc', borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="secondary">SzolgÃ¡ltatÃ¡sok</Typography>
+                        </Box>
+                        <CardContent sx={{ flex: 1, overflowY: 'auto', p: 0, '&:last-child': { pb: 0 } }}>
+                            <List disablePadding>
+                                {servicesList.length === 0 ? (
+                                    <Typography sx={{ p: 2 }} color="textSecondary" variant="body2">Nincs mÃ©g rÃ¶gzÃ­tve szolgÃ¡ltatÃ¡s.</Typography>
+                                ) : (
+                                    servicesList.map((service, index) => (
+                                        <React.Fragment key={service._id}>
+                                            <ListItem>
+                                                <ListItemText
+                                                    primary={<Typography variant="body1" fontWeight="bold">{service.name}</Typography>}
+                                                    secondary={`${service.duration} perc â€¢ ${service.price} Ft`}
+                                                />
+                                            </ListItem>
+                                            {index < servicesList.length - 1 && <Divider />}
+                                        </React.Fragment>
+                                    ))
+                                )}
+                            </List>
+                        </CardContent>
+                    </Card>
+                </Box>
+            </Box>
+
+            <Snackbar
+                open={snackbarOpen} autoHideDuration={3000} onClose={() => setSnackbarOpen(false)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={() => setSnackbarOpen(false)} severity="success" sx={{ width: '100%' }}>
+                    FoglalÃ¡si link sikeresen a vÃ¡gÃ³lapra mÃ¡solva!
+                </Alert>
+            </Snackbar>
+        </Container>
+    );
+};
+
+export default Home;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Login.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// BejelentkezÃ©si Ã©s regisztrÃ¡ciÃ³s felÃ¼let, automatikus szerepkÃ¶r-alapÃº Ã¡tirÃ¡nyÃ­tÃ¡ssal
+
+import React, { useState } from 'react';
+import {
+    Container, Paper, Typography, TextField, Button, Box,
+    Alert, Tabs, Tab, ToggleButton, ToggleButtonGroup, IconButton
+} from '@mui/material';
+import { useNavigate, useLocation } from 'react-router-dom';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import PersonIcon from '@mui/icons-material/Person';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import axiosInstance from '../api/axiosConfig';
+
+const Login = ({ toggleColorMode, mode }) => {
+    // 0 = BejelentkezÃ©s, 1 = RegisztrÃ¡ciÃ³
+    const [tabIndex, setTabIndex] = useState(0);
+    // RegisztrÃ¡ciÃ³s szerepkÃ¶r: 'company' (SzolgÃ¡ltatÃ³) vagy 'guest' (VendÃ©g)
+    const [role, setRole] = useState('guest');
+
+    const [formData, setFormData] = useState({
+        name: '',
+        email: '',
+        phone: '',
+        password: ''
+    });
+    const [error, setError] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // VisszairÃ¡nyÃ­tÃ¡si Ãºtvonal kiolvasÃ¡sa az URL-bÅ‘l (pl. publikus foglalÃ¡si oldalrÃ³l Ã©rkezve)
+    const searchParams = new URLSearchParams(location.search);
+    const redirectPath = searchParams.get('redirect');
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMsg('');
+        setLoading(true);
+
+        try {
+            if (tabIndex === 0) {
+                // BejelentkezÃ©si folyamat
+                const response = await axiosInstance.post('/auth/login', {
+                    email: formData.email,
+                    password: formData.password
+                });
+
+                localStorage.setItem('token', response.data.token);
+                if (response.data.user) {
+                    localStorage.setItem('user', JSON.stringify(response.data.user));
+                }
+
+                // SzerepkÃ¶r-alapÃº Ã¡tirÃ¡nyÃ­tÃ¡s bejelentkezÃ©s utÃ¡n
+                const loggedInRole = response.data.user.role;
+                if (loggedInRole === 'company' || loggedInRole === 'admin') {
+                    navigate(redirectPath || '/');
+                } else {
+                    navigate(redirectPath || '/vendeg-profil');
+                }
+            } else {
+                // RegisztrÃ¡ciÃ³s folyamat a kivÃ¡lasztott szerepkÃ¶rrel
+                const response = await axiosInstance.post('/auth/register', {
+                    name: formData.name,
+                    companyName: role === 'company' ? formData.name : undefined,
+                    email: formData.email,
+                    phone: formData.phone,
+                    password: formData.password,
+                    role: role
+                });
+
+                // Ha a backend regisztrÃ¡ciÃ³ utÃ¡n azonnal tokent ad vissza, belÃ©ptetjÃ¼k
+                if (response.data.token) {
+                    localStorage.setItem('token', response.data.token);
+                    if (response.data.user) {
+                        localStorage.setItem('user', JSON.stringify(response.data.user));
+                    }
+                    
+                    // SzerepkÃ¶r-alapÃº Ã¡tirÃ¡nyÃ­tÃ¡s azonnali belÃ©ptetÃ©s utÃ¡n
+                    const loggedInRole = response.data.user.role;
+                    if (loggedInRole === 'company' || loggedInRole === 'admin') {
+                        navigate(redirectPath || '/');
+                    } else {
+                        navigate(redirectPath || '/vendeg-profil');
+                    }
+                } else {
+                    setSuccessMsg('Sikeres regisztrÃ¡ciÃ³! Most mÃ¡r bejelentkezhetsz.');
+                    setTabIndex(0);
+                }
+            }
+        } catch (err) {
+            setError(
+                err.response?.data?.message ||
+                'Hiba tÃ¶rtÃ©nt a mÅ±velet sorÃ¡n. EllenÅ‘rizd a megadott adatokat!'
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Container maxWidth="xs" sx={{ mt: 8, mb: 6 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                {toggleColorMode && (
+                    <IconButton onClick={toggleColorMode} color="inherit">
+                        {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                    </IconButton>
+                )}
+            </Box>
+            <Paper elevation={3} sx={{ p: 4 }}>
+                <Tabs
+                    value={tabIndex}
+                    onChange={(_, newValue) => {
+                        setTabIndex(newValue);
+                        setError('');
+                        setSuccessMsg('');
+                    }}
+                    variant="fullWidth"
+                    sx={{ mb: 3 }}
+                >
+                    <Tab label="BejelentkezÃ©s" />
+                    <Tab label="RegisztrÃ¡ciÃ³" />
+                </Tabs>
+
+                <Typography variant="h5" align="center" fontWeight="bold" gutterBottom>
+                    {tabIndex === 0 ? 'ÃœdvÃ¶zlÃ¼nk Ãºjra!' : 'FiÃ³k lÃ©trehozÃ¡sa'}
+                </Typography>
+
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                {successMsg && <Alert severity="success" sx={{ mb: 2 }}>{successMsg}</Alert>}
+
+                <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {tabIndex === 1 && (
+                        <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="textSecondary" display="block" sx={{ mb: 1, textAlign: 'center' }}>
+                                Milyen fiÃ³kot szeretnÃ©l lÃ©trehozni?
+                            </Typography>
+                            <ToggleButtonGroup
+                                color="primary"
+                                value={role}
+                                exclusive
+                                fullWidth
+                                onChange={(_, newRole) => { if (newRole) setRole(newRole); }}
+                                size="small"
+                            >
+                                <ToggleButton value="guest" sx={{ py: 1, gap: 1 }}>
+                                    <PersonIcon fontSize="small" />
+                                    VendÃ©g
+                                </ToggleButton>
+                                <ToggleButton value="company" sx={{ py: 1, gap: 1 }}>
+                                    <StorefrontIcon fontSize="small" />
+                                    SzolgÃ¡ltatÃ³ (CÃ©g)
+                                </ToggleButton>
+                            </ToggleButtonGroup>
+                        </Box>
+                    )}
+
+                    {tabIndex === 1 && (
+                        <>
+                            <TextField
+                                label={role === 'company' ? 'CÃ©g / Szalon neve' : 'Teljes nÃ©v'}
+                                name="name"
+                                required
+                                fullWidth
+                                value={formData.name}
+                                onChange={handleChange}
+                            />
+                            <TextField
+                                label="TelefonszÃ¡m"
+                                name="phone"
+                                required
+                                fullWidth
+                                value={formData.phone}
+                                onChange={handleChange}
+                            />
+                        </>
+                    )}
+
+                    <TextField
+                        label="E-mail cÃ­m"
+                        name="email"
+                        type="email"
+                        required
+                        fullWidth
+                        value={formData.email}
+                        onChange={handleChange}
+                    />
+
+                    <TextField
+                        label="JelszÃ³"
+                        name="password"
+                        type="password"
+                        required
+                        fullWidth
+                        value={formData.password}
+                        onChange={handleChange}
+                    />
+
+                    <Button
+                        type="submit"
+                        variant="contained"
+                        color="primary"
+                        size="large"
+                        fullWidth
+                        disabled={loading}
+                        sx={{ mt: 1, py: 1.4 }}
+                    >
+                        {loading
+                            ? 'Folyamatban...'
+                            : (tabIndex === 0 ? 'BelÃ©pÃ©s' : 'RegisztrÃ¡ciÃ³')}
+                    </Button>
+                </Box>
+            </Paper>
+        </Container>
+    );
+};
+
+export default Login;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Profile.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// CÃ©gprofil Ã©s biztonsÃ¡gi beÃ¡llÃ­tÃ¡sok kezelÃ©se
+
+import React, { useState, useEffect } from 'react';
+import { Container, Typography, TextField, Button, Box, Paper, Alert, CircularProgress } from '@mui/material';
+import axiosInstance from '../api/axiosConfig';
+
+const Profile = () => {
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [message, setMessage] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        // Jelenlegi felhasznÃ¡lÃ³i adatok lekÃ©rÃ©se
+        const fetchUserData = async () => {
+            try {
+                const response = await axiosInstance.get('/auth/me');
+                setName(response.data.name || '');
+                setEmail(response.data.email || '');
+            } catch (err) {
+                console.error('Hiba az adatok lekÃ©rÃ©sekor:', err);
+                setError('Nem sikerÃ¼lt betÃ¶lteni a profiladatokat.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, []);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setMessage(null);
+        setError(null);
+
+        try {
+            const payload = { name, email };
+            // JelszÃ³t csak akkor kÃ¼ldÃ¼nk a backendnek, ha a felhasznÃ¡lÃ³ meg akarja vÃ¡ltoztatni
+            if (password.trim() !== '') {
+                payload.password = password;
+            }
+
+            await axiosInstance.put('/auth/profile', payload);
+            setMessage('A profil adatai sikeresen frissÃ­tve lettek.');
+            setPassword(''); // BiztonsÃ¡gi okokbÃ³l Ã¼rÃ­tjÃ¼k a jelszÃ³ mezÅ‘t mentÃ©s utÃ¡n
+        } catch (err) {
+            console.error('Hiba a mentÃ©skor:', err);
+            setError('Hiba tÃ¶rtÃ©nt a profil frissÃ­tÃ©se sorÃ¡n.');
+        }
+    };
+
+    if (loading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
+    }
+
+    return (
+        <Container maxWidth="sm">
+            <Paper elevation={3} sx={{ mt: 5, p: 4 }}>
+                <Typography variant="h5" gutterBottom color="primary">CÃ©gprofil Ã©s BeÃ¡llÃ­tÃ¡sok</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                    Itt mÃ³dosÃ­thatod a szolgÃ¡ltatÃ¡sod megjelenÅ‘ nevÃ©t, a bejelentkezÃ©si e-mail cÃ­medet Ã©s a jelszavadat.
+                </Typography>
+
+                {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+                <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <TextField 
+                        required 
+                        label="CÃ©g vagy SzolgÃ¡ltatÃ³ neve" 
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)} 
+                    />
+                    <TextField 
+                        required 
+                        type="email" 
+                        label="E-mail cÃ­m" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                    />
+                    <TextField 
+                        type="password" 
+                        label="Ãšj jelszÃ³ (Hagyd Ã¼resen, ha nem mÃ³dosÃ­tod)" 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                    />
+                    <Button type="submit" variant="contained" color="primary" size="large">
+                        MÃ³dosÃ­tÃ¡sok mentÃ©se
+                    </Button>
+                </Box>
+            </Paper>
+        </Container>
+    );
+};
+
+export default Profile;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\PublicBooking.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// Publikus idÅ‘pontfoglalÃ³ oldal: beÃ©pÃ­tett naptÃ¡r, vendÃ©g profilszerkesztÃ©s Ã©s opcionÃ¡lis munkatÃ¡rs-vÃ¡lasztÃ¡s
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+    Container, Typography, Card, CardContent, Box, Button, TextField,
+    CircularProgress, Alert, IconButton, Collapse, Divider, Chip, Avatar,
+    Dialog, DialogTitle, DialogContent, DialogActions, useTheme
+} from '@mui/material';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LoginIcon from '@mui/icons-material/Login';
+import LogoutIcon from '@mui/icons-material/Logout';
+import HistoryIcon from '@mui/icons-material/History';
+import EditIcon from '@mui/icons-material/Edit';
+import axiosInstance from '../api/axiosConfig';
+
+const DAY_HEADERS = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
+
+// ÃšjrahasznosÃ­thatÃ³ kÃ¡rtyakomponens a foglalÃ¡si lÃ©pÃ©sek megjelenÃ­tÃ©sÃ©hez
+const StepCard = ({ step, activeStep, title, summary, isDone, disabled, onEdit, children }) => {
+    const isOpen = activeStep === step;
+    return (
+        <Card
+            elevation={isOpen ? 4 : 1}
+            sx={{
+                borderLeft: '5px solid',
+                borderLeftColor: isDone ? '#22c55e' : (isOpen ? '#2563eb' : 'transparent'),
+                opacity: disabled ? 0.6 : 1
+            }}
+        >
+            <CardContent sx={{ p: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Chip label={step} color={isDone ? 'success' : (isOpen ? 'primary' : 'default')} size="small" sx={{ fontWeight: 'bold' }} />
+                        <Typography variant="h6" fontWeight="bold">{title}</Typography>
+                    </Box>
+                    {isDone && !isOpen && summary && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Typography variant="body1" fontWeight="bold" color="primary">{summary}</Typography>
+                            <Button size="small" variant="outlined" onClick={onEdit}>MÃ³dosÃ­tÃ¡s</Button>
+                        </Box>
+                    )}
+                </Box>
+                <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                    <Divider sx={{ my: 2 }} />
+                    {children}
+                </Collapse>
+            </CardContent>
+        </Card>
+    );
+};
+
+const PublicBooking = ({ toggleColorMode, mode }) => {
+    const { companyId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const isDark = useTheme().palette.mode === 'dark';
+
+    const todayObj = new Date();
+    const toIsoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayStr = toIsoDate(todayObj);
+
+    const [activeStep, setActiveStep] = useState(1);
+    const [staffList, setStaffList] = useState([]);
+    const [servicesList, setServicesList] = useState([]);
+    const [availableSlots, setAvailableSlots] = useState([]);
+
+    // Bejelentkezett felhasznÃ¡lÃ³ Ã¡llapota, elÅ‘zmÃ©nyei Ã©s profilszerkesztÅ‘ ablaka
+    const [currentUser, setCurrentUser] = useState(null);
+    const [myBookings, setMyBookings] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
+    const [profileModalOpen, setProfileModalOpen] = useState(false);
+    const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '' });
+
+    const [selectedService, setSelectedService] = useState(null);
+    const [selectedStaff, setSelectedStaff] = useState(null);
+    const [selectedDate, setSelectedDate] = useState(todayStr);
+    const [selectedTime, setSelectedTime] = useState('');
+    const [currentMonth, setCurrentMonth] = useState(new Date(todayObj.getFullYear(), todayObj.getMonth(), 1));
+    const [formData, setFormData] = useState({ customerName: '', customerEmail: '', customerPhone: '' });
+
+    const [loading, setLoading] = useState(true);
+    const [slotsLoading, setSlotsLoading] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [feedback, setFeedback] = useState({ type: '', message: '' });
+
+    useEffect(() => {
+        const loadPageData = async () => {
+            try {
+                const [staffRes, servicesRes] = await Promise.all([
+                    axiosInstance.get(`/staff/company/${companyId}`),
+                    axiosInstance.get(`/services/company/${companyId}`)
+                ]);
+                setStaffList(staffRes.data);
+                setServicesList(servicesRes.data);
+
+                const token = localStorage.getItem('token');
+                if (token) {
+                    const userRes = await axiosInstance.get('/auth/me');
+                    const user = userRes.data;
+                    setCurrentUser(user);
+                    const userFields = {
+                        name: user.name || user.companyName || '',
+                        email: user.email || '',
+                        phone: user.phone || ''
+                    };
+                    setProfileForm(userFields);
+                    setFormData({
+                        customerName: userFields.name,
+                        customerEmail: userFields.email,
+                        customerPhone: userFields.phone
+                    });
+
+                    try {
+                        const historyRes = await axiosInstance.get('/bookings/guest-history');
+                        setMyBookings(historyRes.data);
+                    } catch (_) {}
+                }
+            } catch (error) {
+                setFeedback({ type: 'error', message: 'Hiba tÃ¶rtÃ©nt az adatok betÃ¶ltÃ©sekor.' });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadPageData();
+    }, [companyId]);
+
+    // Szabad idÅ‘sÃ¡vok lekÃ©rÃ©se (figyelembe vÃ©ve a munkatÃ¡rs szabadnapjait is)
+    useEffect(() => {
+        if (!selectedStaff || !selectedService || !selectedDate) return;
+        setSelectedTime('');
+
+        const isStaffOnHoliday = (selectedStaff.availability?.daysOff || []).some(
+            (d) => String(d).split('T')[0] === selectedDate
+        );
+        if (isStaffOnHoliday) {
+            setAvailableSlots([]);
+            return;
+        }
+
+        setSlotsLoading(true);
+        axiosInstance.get('/bookings/available-slots', {
+            params: { companyId, staffId: selectedStaff._id, serviceId: selectedService._id, date: selectedDate }
+        })
+            .then((res) => setAvailableSlots(Array.isArray(res.data) ? res.data : (res.data.availableSlots || [])))
+            .catch(() => setAvailableSlots([]))
+            .finally(() => setSlotsLoading(false));
+    }, [companyId, selectedStaff, selectedService, selectedDate]);
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setCurrentUser(null);
+        setMyBookings([]);
+        setFormData({ customerName: '', customerEmail: '', customerPhone: '' });
+    };
+
+    // Bejelentkezett vendÃ©g profiladatainak mentÃ©se
+    // Bejelentkezett vendÃ©g profiladatainak mentÃ©se a /auth/profile vÃ©gponton keresztÃ¼l
+    const handleSaveProfile = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await axiosInstance.put('/auth/profile', profileForm);
+            const updated = res.data.user || res.data;
+            setCurrentUser(updated);
+            setFormData({
+                customerName: updated.name || profileForm.name,
+                customerEmail: updated.email || profileForm.email,
+                customerPhone: updated.phone || profileForm.phone
+            });
+            setProfileModalOpen(false);
+            setFeedback({ type: 'success', message: 'Profiladatok sikeresen frissÃ­tve!' });
+        } catch (error) {
+            setFeedback({ type: 'error', message: 'Hiba tÃ¶rtÃ©nt a profil mentÃ©sekor.' });
+        }
+    };
+
+    // SzolgÃ¡ltatÃ¡s kivÃ¡lasztÃ¡sa: ha nem igÃ©nyel munkatÃ¡rsat, automatikusan hozzÃ¡rendeljÃ¼k az elsÅ‘t Ã©s ugrunk a naptÃ¡rra
+    const handleSelectService = (service) => {
+        setSelectedService(service);
+        if (service.requiresStaff === false && staffList.length > 0) {
+            setSelectedStaff(staffList[0]);
+            setActiveStep(3);
+        } else {
+            setActiveStep(2);
+        }
+    };
+
+    const formatSelectedDateTime = () => {
+        const [y, m, d] = selectedDate.split('-').map(Number);
+        const dateStr = new Date(y, m - 1, d).toLocaleDateString('hu-HU', {
+            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+        });
+        if (!selectedTime || !selectedService) return dateStr;
+
+        const [h, min] = selectedTime.split(':').map(Number);
+        const end = new Date(2000, 0, 1, h, min + selectedService.duration);
+        const endStr = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+        return `${dateStr}, ${selectedTime}â€“${endStr}`;
+    };
+
+    const getCalendarDays = () => {
+        const y = currentMonth.getFullYear();
+        const m = currentMonth.getMonth();
+        const offset = (new Date(y, m, 1).getDay() + 6) % 7;
+        const totalDays = new Date(y, m + 1, 0).getDate();
+
+        return [
+            ...Array(offset).fill(null),
+            ...Array.from({ length: totalDays }, (_, i) => {
+                const dateStr = toIsoDate(new Date(y, m, i + 1));
+                return { day: i + 1, dateStr, isPast: dateStr < todayStr };
+            })
+        ];
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        setFeedback({ type: '', message: '' });
+
+        const [h, min] = selectedTime.split(':').map(Number);
+        const end = new Date(2000, 0, 1, h, min + selectedService.duration);
+        const endTimeStr = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+
+        try {
+            const res = await axiosInstance.post('/bookings', {
+                companyId,
+                staffId: selectedStaff._id,
+                serviceId: selectedService._id,
+                date: selectedDate,
+                startTime: selectedTime,
+                endTime: endTimeStr,
+                userId: currentUser?._id || null,
+                isRegisteredUser: !!currentUser,
+                guestData: {
+                    name: formData.customerName,
+                    email: formData.customerEmail,
+                    phone: formData.customerPhone,
+                    isRegistered: !!currentUser
+                }
+            });
+
+            if (currentUser && res.data && res.data.booking) {
+                setMyBookings((prev) => [res.data.booking, ...prev]);
+            }
+            setFeedback({ type: 'success', message: 'Az idÅ‘pontfoglalÃ¡s sikeresen rÃ¶gzÃ­tve!' });
+            setActiveStep(5);
+        } catch (error) {
+            setFeedback({ type: 'error', message: error.response?.data?.message || 'Hiba a foglalÃ¡s mentÃ©sekor.' });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
+
+    const isMinMonth = currentMonth.getFullYear() === todayObj.getFullYear() && currentMonth.getMonth() === todayObj.getMonth();
+    const activeBg = isDark ? 'rgba(37, 99, 235, 0.15)' : '#eff6ff';
+    const isStaffHoliday = (selectedStaff?.availability?.daysOff || []).some((d) => String(d).split('T')[0] === selectedDate);
+
+    return (
+        <Container maxWidth="md" sx={{ mt: 4, mb: 6 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+                <Box>
+                    <Typography variant="h4" color="primary" fontWeight="bold">IdÅ‘pontfoglalÃ¡s</Typography>
+                    <Typography variant="body2" color="textSecondary">VÃ¡laszd ki a szolgÃ¡ltatÃ¡st Ã©s a szÃ¡modra megfelelÅ‘ idÅ‘pontot.</Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                    {currentUser ? (
+                        <>
+                            <Chip
+                                avatar={<Avatar>{(currentUser.name || currentUser.email || 'U')[0].toUpperCase()}</Avatar>}
+                                label={`${currentUser.name || currentUser.email} (Profilom)`}
+                                onClick={() => setProfileModalOpen(true)}
+                                deleteIcon={<EditIcon />}
+                                onDelete={() => setProfileModalOpen(true)}
+                                color="primary"
+                                variant="outlined"
+                            />
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<HistoryIcon />}
+                                onClick={() => setShowHistory(!showHistory)}
+                            >
+                                ElÅ‘zmÃ©nyek ({myBookings.length})
+                            </Button>
+                            <IconButton color="error" onClick={handleLogout} title="KijelentkezÃ©s">
+                                <LogoutIcon />
+                            </IconButton>
+                        </>
+                    ) : (
+                        <Button
+                            variant="outlined"
+                            startIcon={<LoginIcon />}
+                            onClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
+                        >
+                            BejelentkezÃ©s / RegisztrÃ¡ciÃ³
+                        </Button>
+                    )}
+
+                    {toggleColorMode && (
+                        <IconButton onClick={toggleColorMode} color="inherit" sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                        </IconButton>
+                    )}
+                </Box>
+            </Box>
+
+            <Collapse in={showHistory && !!currentUser}>
+                <Card variant="outlined" sx={{ mb: 3, p: 2, bgcolor: isDark ? 'rgba(255,255,255,0.02)' : '#f8fafc' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" gutterBottom>KorÃ¡bbi foglalÃ¡saim</Typography>
+                    {myBookings.length === 0 ? (
+                        <Typography variant="body2" color="textSecondary">MÃ©g nincs rÃ¶gzÃ­tett foglalÃ¡sod.</Typography>
+                    ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            {myBookings.map((b) => (
+                                <Box key={b._id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                                    <Typography variant="body2">
+                                        <strong>{new Date(b.date).toLocaleDateString('hu-HU')}</strong> ({b.startTime} - {b.endTime}) â€¢ {b.serviceId?.name || 'SzolgÃ¡ltatÃ¡s'}
+                                    </Typography>
+                                    <Chip
+                                        size="small"
+                                        label={b.status === 'confirmed' ? 'Elfogadva' : b.status === 'cancelled' ? 'ElutasÃ­tva' : 'FÃ¼ggÅ‘ben'}
+                                        color={b.status === 'confirmed' ? 'success' : b.status === 'cancelled' ? 'error' : 'warning'}
+                                    />
+                                </Box>
+                            ))}
+                        </Box>
+                    )}
+                </Card>
+            </Collapse>
+
+            {feedback.message && <Alert severity={feedback.type} sx={{ mb: 3 }}>{feedback.message}</Alert>}
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                {/* 1. SZOLGÃLTATÃS KIVÃLASZTÃSA */}
+                <StepCard
+                    step={1} activeStep={activeStep} title="SzolgÃ¡ltatÃ¡s kivÃ¡lasztÃ¡sa"
+                    isDone={!!selectedService} summary={selectedService && `${selectedService.name} (${selectedService.price} Ft)`}
+                    onEdit={() => setActiveStep(1)}
+                >
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                        {servicesList.map((service) => (
+                            <Card
+                                key={service._id} variant="outlined"
+                                onClick={() => handleSelectService(service)}
+                                sx={{
+                                    p: 2, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    borderColor: selectedService?._id === service._id ? 'primary.main' : 'divider',
+                                    bgcolor: selectedService?._id === service._id ? activeBg : 'transparent',
+                                    '&:hover': { borderColor: 'primary.main' }
+                                }}
+                            >
+                                <Box>
+                                    <Typography variant="subtitle1" fontWeight="bold">{service.name}</Typography>
+                                    <Typography variant="caption" color="textSecondary">{service.duration} perc</Typography>
+                                </Box>
+                                <Chip label={`${service.price} Ft`} color="secondary" variant="outlined" sx={{ fontWeight: 'bold' }} />
+                            </Card>
+                        ))}
+                    </Box>
+                </StepCard>
+
+                {/* 2. MUNKATÃRS KIVÃLASZTÃSA (Csak akkor lÃ¡tszik, ha a szolgÃ¡ltatÃ¡s igÃ©nyel munkatÃ¡rsat) */}
+                {selectedService?.requiresStaff !== false && (
+                    <StepCard
+                        step={2} activeStep={activeStep} title="MunkatÃ¡rs kivÃ¡lasztÃ¡sa" disabled={!selectedService}
+                        isDone={!!selectedStaff} summary={selectedStaff?.name} onEdit={() => setActiveStep(2)}
+                    >
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                            {staffList.map((staff) => (
+                                <Card
+                                    key={staff._id} variant="outlined"
+                                    onClick={() => { setSelectedStaff(staff); setActiveStep(3); }}
+                                    sx={{
+                                        p: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
+                                        borderColor: selectedStaff?._id === staff._id ? 'primary.main' : 'divider',
+                                        bgcolor: selectedStaff?._id === staff._id ? activeBg : 'transparent',
+                                        '&:hover': { borderColor: 'primary.main' }
+                                    }}
+                                >
+                                    <Avatar sx={{ bgcolor: 'primary.main', fontWeight: 'bold' }}>{staff.name[0].toUpperCase()}</Avatar>
+                                    <Typography variant="subtitle1" fontWeight="bold">{staff.name}</Typography>
+                                </Card>
+                            ))}
+                        </Box>
+                    </StepCard>
+                )}
+
+                {/* 3. NAPTÃR Ã‰S IDÅPONT */}
+                <StepCard
+                    step={selectedService?.requiresStaff === false ? 2 : 3}
+                    activeStep={activeStep === 3 ? (selectedService?.requiresStaff === false ? 2 : 3) : activeStep}
+                    title="IdÅ‘pont kivÃ¡lasztÃ¡sa" disabled={!selectedStaff || !selectedService}
+                    isDone={!!selectedTime} summary={formatSelectedDateTime()} onEdit={() => setActiveStep(3)}
+                >
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, gap: 4 }}>
+                        <Box sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <IconButton size="small" disabled={isMinMonth} onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>
+                                    <ChevronLeftIcon />
+                                </IconButton>
+                                <Typography variant="subtitle1" fontWeight="bold">
+                                    {currentMonth.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long' })}
+                                </Typography>
+                                <IconButton size="small" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>
+                                    <ChevronRightIcon />
+                                </IconButton>
+                            </Box>
+
+                            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', mb: 1 }}>
+                                {DAY_HEADERS.map((d) => <Typography key={d} variant="caption" fontWeight="bold" color="textSecondary">{d}</Typography>)}
+                            </Box>
+
+                            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
+                                {getCalendarDays().map((item, idx) => item ? (
+                                    <Button
+                                        key={item.dateStr} disabled={item.isPast} onClick={() => setSelectedDate(item.dateStr)}
+                                        sx={{
+                                            minWidth: 0, height: 36, p: 0, borderRadius: '50%',
+                                            bgcolor: item.dateStr === selectedDate ? 'primary.main' : 'transparent',
+                                            color: item.dateStr === selectedDate ? '#fff' : 'text.primary',
+                                            border: item.dateStr === todayStr && item.dateStr !== selectedDate ? '1px solid' : 'none',
+                                            '&:hover': { bgcolor: item.dateStr === selectedDate ? 'primary.dark' : 'action.hover' }
+                                        }}
+                                    >
+                                        {item.day}
+                                    </Button>
+                                ) : <Box key={`e-${idx}`} />)}
+                            </Box>
+                        </Box>
+
+                        <Box>
+                            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{formatSelectedDateTime()}</Typography>
+                            {slotsLoading ? <CircularProgress size={28} /> : availableSlots.length === 0 ? (
+                                <Alert severity={isStaffHoliday ? 'warning' : 'info'}>
+                                    {isStaffHoliday
+                                        ? `A kivÃ¡lasztott szakember ezen a napon (${selectedDate}) szabadsÃ¡gon van. KÃ©rjÃ¼k, vÃ¡lassz mÃ¡sik napot!`
+                                        : 'Erre a napra nincs szabad idÅ‘pont.'}
+                                </Alert>
+                            ) : (
+                                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 1.5 }}>
+                                    {availableSlots.map((slot) => (
+                                        <Button
+                                            key={slot} onClick={() => setSelectedTime(slot)}
+                                            variant={selectedTime === slot ? 'contained' : 'outlined'}
+                                            sx={{ fontWeight: 'bold' }}
+                                        >
+                                            {slot}
+                                        </Button>
+                                    ))}
+                                </Box>
+                            )}
+                            {selectedTime && (
+                                <Box sx={{ mt: 3, textAlign: 'right' }}>
+                                    <Button variant="contained" onClick={() => setActiveStep(4)}>TovÃ¡bb az adatokhoz</Button>
+                                </Box>
+                            )}
+                        </Box>
+                    </Box>
+                </StepCard>
+
+                {/* 4. SZEMÃ‰LYES ADATOK */}
+                <StepCard
+                    step={selectedService?.requiresStaff === false ? 3 : 4}
+                    activeStep={activeStep === 4 ? (selectedService?.requiresStaff === false ? 3 : 4) : activeStep}
+                    title="VÃ©glegesÃ­tÃ©s Ã©s szemÃ©lyes adatok"
+                    disabled={!selectedTime} isDone={activeStep === 5}
+                >
+                    <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {currentUser && (
+                            <Alert severity="info">
+                                Bejelentkezve mint <strong>{currentUser.name || currentUser.email}</strong>. Az adataidat automatikusan kitÃ¶ltÃ¶ttÃ¼k!
+                            </Alert>
+                        )}
+                        <TextField label="Teljes nÃ©v" required fullWidth value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} />
+                        <TextField label="E-mail cÃ­m" type="email" required fullWidth value={formData.customerEmail} onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })} />
+                        <TextField label="TelefonszÃ¡m" required fullWidth value={formData.customerPhone} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} />
+                        <Button type="submit" variant="contained" size="large" disabled={submitting}>
+                            {submitting ? 'KÃ¼ldÃ©s...' : 'FoglalÃ¡s ElkÃ¼ldÃ©se'}
+                        </Button>
+                    </Box>
+                </StepCard>
+
+                {activeStep === 5 && (
+                    <Card sx={{ textAlign: 'center', p: 4 }}>
+                        <CheckCircleIcon color="success" sx={{ fontSize: 56, mb: 1 }} />
+                        <Typography variant="h6" fontWeight="bold">KÃ¶szÃ¶njÃ¼k a foglalÃ¡st!</Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            {selectedService?.name} â€¢ {formatSelectedDateTime()}
+                        </Typography>
+                        <Button variant="outlined" onClick={() => { setSelectedTime(''); setActiveStep(1); setFeedback({ type: '', message: '' }); }}>
+                            Ãšj idÅ‘pont foglalÃ¡sa
+                        </Button>
+                    </Card>
+                )}
+            </Box>
+
+            {/* FelugrÃ³ ablak: Bejelentkezett vendÃ©g profiladatainak mÃ³dosÃ­tÃ¡sa */}
+            <Dialog open={profileModalOpen} onClose={() => setProfileModalOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ fontWeight: 'bold' }}>Profilom szerkesztÃ©se</DialogTitle>
+                <Box component="form" onSubmit={handleSaveProfile}>
+                    <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField
+                            label="Teljes nÃ©v"
+                            required
+                            fullWidth
+                            value={profileForm.name}
+                            onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                        />
+                        <TextField
+                            label="E-mail cÃ­m"
+                            type="email"
+                            required
+                            fullWidth
+                            value={profileForm.email}
+                            onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                        />
+                        <TextField
+                            label="TelefonszÃ¡m"
+                            required
+                            fullWidth
+                            value={profileForm.phone}
+                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                        />
+                    </DialogContent>
+                    <DialogActions sx={{ p: 2 }}>
+                        <Button onClick={() => setProfileModalOpen(false)}>MÃ©gse</Button>
+                        <Button type="submit" variant="contained" color="primary">MentÃ©s</Button>
+                    </DialogActions>
+                </Box>
+            </Dialog>
+        </Container>
+    );
+};
+
+export default PublicBooking;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Services.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// SzolgÃ¡ltatÃ¡sok kezelÃ©se (Services) - LÃ©trehozÃ¡s, szerkesztÃ©s, tÃ¶rlÃ©s Ã©s munkatÃ¡rs-igÃ©ny beÃ¡llÃ­tÃ¡sa
+
+import React, { useState, useEffect } from 'react';
+import {
+    Container, Paper, Typography, TextField, Button, Box, List,
+    ListItem, ListItemText, FormControlLabel, Switch, Chip
+} from '@mui/material';
+import axiosInstance from '../api/axiosConfig';
+
+const Services = () => {
+    const [services, setServices] = useState([]);
+    const [name, setName] = useState('');
+    const [duration, setDuration] = useState('');
+    const [price, setPrice] = useState('');
+    const [requiresStaff, setRequiresStaff] = useState(true);
+    const [editingId, setEditingId] = useState(null);
+    const [companyId, setCompanyId] = useState('');
+
+    useEffect(() => {
+        const fetchServices = async () => {
+            try {
+                const userRes = await axiosInstance.get('/auth/me');
+                const cId = userRes.data._id;
+                setCompanyId(cId);
+
+                const res = await axiosInstance.get(`/services/company/${cId}`);
+                setServices(res.data);
+            } catch (error) {
+                console.error('Hiba a szolgÃ¡ltatÃ¡sok betÃ¶ltÃ©sekor:', error);
+            }
+        };
+
+        fetchServices();
+    }, []);
+
+    // SzolgÃ¡ltatÃ¡s mentÃ©se (Ãºj felvÃ©tele vagy meglÃ©vÅ‘ frissÃ­tÃ©se)
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const payload = {
+                companyId,
+                name,
+                duration: Number(duration),
+                price: Number(price),
+                requiresStaff
+            };
+
+            if (editingId) {
+                const res = await axiosInstance.put(`/services/${editingId}`, payload);
+                const updated = res.data.service || res.data;
+                setServices(services.map((s) => (s._id === editingId ? updated : s)));
+                setEditingId(null);
+            } else {
+                const res = await axiosInstance.post('/services', payload);
+                const created = res.data.service || res.data;
+                setServices([...services, created]);
+            }
+
+            setName('');
+            setDuration('');
+            setPrice('');
+            setRequiresStaff(true);
+        } catch (error) {
+            console.error('Hiba a szolgÃ¡ltatÃ¡s mentÃ©sekor:', error);
+        }
+    };
+
+    const handleEdit = (service) => {
+        setEditingId(service._id);
+        setName(service.name);
+        setDuration(service.duration);
+        setPrice(service.price);
+        setRequiresStaff(service.requiresStaff !== false);
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Biztosan tÃ¶rÃ¶lni szeretnÃ©d ezt a szolgÃ¡ltatÃ¡st?')) return;
+        try {
+            await axiosInstance.delete(`/services/${id}`);
+            setServices(services.filter((s) => s._id !== id));
+        } catch (error) {
+            console.error('Hiba a tÃ¶rlÃ©s sorÃ¡n:', error);
+        }
+    };
+
+    return (
+        <Container maxWidth="md" sx={{ mt: 5, mb: 5 }}>
+            <Paper elevation={3} sx={{ p: 4, mb: 4 }}>
+                <Typography variant="h5" color="primary" fontWeight="bold" gutterBottom>
+                    {editingId ? 'SzolgÃ¡ltatÃ¡s MÃ³dosÃ­tÃ¡sa' : 'Ãšj SzolgÃ¡ltatÃ¡s FelvÃ©tele'}
+                </Typography>
+
+                <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 2 }}>
+                    <TextField
+                        label="SzolgÃ¡ltatÃ¡s megnevezÃ©se"
+                        required
+                        fullWidth
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                        <TextField
+                            label="IdÅ‘tartam (perc)"
+                            type="number"
+                            required
+                            fullWidth
+                            value={duration}
+                            onChange={(e) => setDuration(e.target.value)}
+                        />
+                        <TextField
+                            label="Ãr (Ft)"
+                            type="number"
+                            required
+                            fullWidth
+                            value={price}
+                            onChange={(e) => setPrice(e.target.value)}
+                        />
+                    </Box>
+
+                    {/* KapcsolÃ³ annak eldÃ¶ntÃ©sÃ©re, hogy a vendÃ©gnek kell-e munkatÃ¡rsat vÃ¡lasztania */}
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={requiresStaff}
+                                onChange={(e) => setRequiresStaff(e.target.checked)}
+                                color="primary"
+                            />
+                        }
+                        label="A foglalÃ¡shoz a vendÃ©gnek munkatÃ¡rsat is ki kell vÃ¡lasztania"
+                    />
+
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button type="submit" variant="contained" color="primary" size="large">
+                            {editingId ? 'MÃ³dosÃ­tÃ¡s MentÃ©se' : 'HozzÃ¡adÃ¡s'}
+                        </Button>
+                        {editingId && (
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                onClick={() => {
+                                    setEditingId(null);
+                                    setName('');
+                                    setDuration('');
+                                    setPrice('');
+                                    setRequiresStaff(true);
+                                }}
+                            >
+                                MÃ©gse
+                            </Button>
+                        )}
+                    </Box>
+                </Box>
+            </Paper>
+
+            <Paper elevation={3} sx={{ p: 4 }}>
+                <Typography variant="h5" color="secondary" fontWeight="bold" gutterBottom>
+                    SzolgÃ¡ltatÃ¡sok ListÃ¡ja
+                </Typography>
+
+                <List>
+                    {services.length === 0 ? (
+                        <Typography color="textSecondary">MÃ©g nincs rÃ¶gzÃ­tve szolgÃ¡ltatÃ¡s.</Typography>
+                    ) : (
+                        services.map((service) => (
+                            <ListItem
+                                key={service._id}
+                                divider
+                                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}
+                            >
+                                <Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                        <Typography variant="subtitle1" fontWeight="bold">
+                                            {service.name}
+                                        </Typography>
+                                        <Chip
+                                            size="small"
+                                            variant="outlined"
+                                            color={service.requiresStaff === false ? 'default' : 'primary'}
+                                            label={service.requiresStaff === false ? 'MunkatÃ¡rs nem szÃ¼ksÃ©ges' : 'MunkatÃ¡rs-vÃ¡lasztÃ³s'}
+                                        />
+                                    </Box>
+                                    <Typography variant="body2" color="textSecondary">
+                                        IdÅ‘tartam: {service.duration} perc â€¢ Ãr: {service.price} Ft
+                                    </Typography>
+                                </Box>
+
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <Button variant="outlined" size="small" onClick={() => handleEdit(service)}>
+                                        SzerkesztÃ©s
+                                    </Button>
+                                    <Button variant="outlined" color="error" size="small" onClick={() => handleDelete(service._id)}>
+                                        TÃ¶rlÃ©s
+                                    </Button>
+                                </Box>
+                            </ListItem>
+                        ))
+                    )}
+                </List>
+            </Paper>
+        </Container>
+    );
+};
+
+export default Services;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\pages\Staff.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// MunkatÃ¡rsak kezelÃ©se (Staff): felvÃ©tel, mÃ³dosÃ­tÃ¡s, heti munkarend Ã©s szabadsÃ¡gok (daysOff) beÃ¡llÃ­tÃ¡sa
+
+import React, { useState, useEffect } from 'react';
+import {
+    Container, Paper, Typography, TextField, Button, Box, List, ListItem,
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    Checkbox, FormControlLabel, Chip, Divider, Alert
+} from '@mui/material';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import axiosInstance from '../api/axiosConfig';
+
+const DAYS_OF_WEEK = [
+    { dayOfWeek: 1, label: 'HÃ©tfÅ‘' },
+    { dayOfWeek: 2, label: 'Kedd' },
+    { dayOfWeek: 3, label: 'Szerda' },
+    { dayOfWeek: 4, label: 'CsÃ¼tÃ¶rtÃ¶k' },
+    { dayOfWeek: 5, label: 'PÃ©ntek' },
+    { dayOfWeek: 6, label: 'Szombat' },
+    { dayOfWeek: 0, label: 'VasÃ¡rnap' }
+];
+
+const DEFAULT_WORKING_HOURS = [1, 2, 3, 4, 5].map((d) => ({
+    dayOfWeek: d,
+    startTime: '09:00',
+    endTime: '17:00'
+}));
+
+// SegÃ©dfÃ¼ggvÃ©ny az ISO dÃ¡tumok (pl. 2026-10-28T00:00:00.000Z) YYYY-MM-DD formÃ¡tumra alakÃ­tÃ¡sÃ¡hoz
+const cleanDateStr = (dateVal) => {
+    if (!dateVal) return '';
+    return String(dateVal).split('T')[0];
+};
+
+const Staff = () => {
+    const [staffList, setStaffList] = useState([]);
+    const [name, setName] = useState('');
+    const [editingStaffId, setEditingStaffId] = useState(null);
+    const [companyId, setCompanyId] = useState('');
+
+    // BeosztÃ¡s Ã©s szabadsÃ¡g szerkesztÅ‘ ablak Ã¡llapotai
+    const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+    const [selectedStaff, setSelectedStaff] = useState(null);
+    const [workingHours, setWorkingHours] = useState([]);
+    const [daysOff, setDaysOff] = useState([]);
+    const [newDayOff, setNewDayOff] = useState('');
+    const [feedback, setFeedback] = useState('');
+
+    const fetchStaffData = async () => {
+        try {
+            const userRes = await axiosInstance.get('/auth/me');
+            const cId = userRes.data._id;
+            setCompanyId(cId);
+
+            const staffRes = await axiosInstance.get(`/staff/company/${cId}`);
+            setStaffList(staffRes.data);
+        } catch (error) {
+            console.error('Hiba a munkatÃ¡rsak betÃ¶ltÃ©sekor:', error);
+        }
+    };
+
+    useEffect(() => {
+        fetchStaffData();
+    }, []);
+
+    // Ãšj munkatÃ¡rs lÃ©trehozÃ¡sa vagy meglÃ©vÅ‘ nevÃ©nek mÃ³dosÃ­tÃ¡sa
+    const handleSaveStaff = async (e) => {
+        e.preventDefault();
+        setFeedback('');
+
+        try {
+            if (editingStaffId) {
+                const current = staffList.find((s) => s._id === editingStaffId);
+                const res = await axiosInstance.put(`/staff/${editingStaffId}`, {
+                    name,
+                    availability: current?.availability || { workingHours: DEFAULT_WORKING_HOURS, daysOff: [] }
+                });
+                const updatedStaff = res.data.staff || res.data;
+                setStaffList(staffList.map((s) => (s._id === editingStaffId ? updatedStaff : s)));
+                setEditingStaffId(null);
+            } else {
+                const res = await axiosInstance.post('/staff', {
+                    companyId,
+                    name,
+                    availability: { workingHours: DEFAULT_WORKING_HOURS, daysOff: [] }
+                });
+                const createdStaff = res.data.staff || res.data;
+                setStaffList([...staffList, createdStaff]);
+            }
+            setName('');
+        } catch (error) {
+            console.error('Hiba a munkatÃ¡rs mentÃ©sekor:', error);
+        }
+    };
+
+    const handleEditClick = (staff) => {
+        setEditingStaffId(staff._id);
+        setName(staff.name);
+    };
+
+    const handleDeleteStaff = async (id) => {
+        if (!window.confirm('Biztosan tÃ¶rÃ¶lni szeretnÃ©d ezt a munkatÃ¡rsat?')) return;
+        try {
+            await axiosInstance.delete(`/staff/${id}`);
+            setStaffList(staffList.filter((s) => s._id !== id));
+        } catch (error) {
+            console.error('Hiba a munkatÃ¡rs tÃ¶rlÃ©sekor:', error);
+        }
+    };
+
+    // BeosztÃ¡s Ã©s szabadsÃ¡gok ablak megnyitÃ¡sa (dÃ¡tumok megtisztÃ­tÃ¡sÃ¡val)
+    const handleOpenSchedule = (staff) => {
+        setSelectedStaff(staff);
+        setWorkingHours(staff.availability?.workingHours || DEFAULT_WORKING_HOURS);
+        const normalizedDaysOff = (staff.availability?.daysOff || []).map(cleanDateStr);
+        setDaysOff(normalizedDaysOff);
+        setNewDayOff('');
+        setScheduleModalOpen(true);
+    };
+
+    // Munkanap be- Ã©s kikapcsolÃ¡sa a heti beosztÃ¡sban
+    const handleToggleDay = (dayOfWeek) => {
+        const exists = workingHours.some((wh) => wh.dayOfWeek === dayOfWeek);
+        if (exists) {
+            setWorkingHours(workingHours.filter((wh) => wh.dayOfWeek !== dayOfWeek));
+        } else {
+            setWorkingHours([...workingHours, { dayOfWeek, startTime: '09:00', endTime: '17:00' }]);
+        }
+    };
+
+    // Adott nap kezdÃ©si vagy befejezÃ©si idejÃ©nek frissÃ­tÃ©se
+    const handleTimeChange = (dayOfWeek, field, value) => {
+        setWorkingHours(workingHours.map((wh) =>
+            wh.dayOfWeek === dayOfWeek ? { ...wh, [field]: value } : wh
+        ));
+    };
+
+    // HÃ©tfÅ‘i munkaidÅ‘ gyors mÃ¡solÃ¡sa az Ã¶sszes hÃ©tkÃ¶znapra (Kedd-PÃ©ntek)
+    const handleCopyMondayToWeekdays = () => {
+        const monday = workingHours.find((wh) => wh.dayOfWeek === 1);
+        if (!monday) return;
+
+        const weekend = workingHours.filter((wh) => wh.dayOfWeek === 0 || wh.dayOfWeek === 6);
+        const weekdays = [1, 2, 3, 4, 5].map((d) => ({
+            dayOfWeek: d,
+            startTime: monday.startTime,
+            endTime: monday.endTime
+        }));
+        setWorkingHours([...weekdays, ...weekend]);
+    };
+
+    // Ãšj szabadnap hozzÃ¡adÃ¡sa
+    const handleAddDayOff = () => {
+        if (!newDayOff || daysOff.includes(newDayOff)) return;
+        const updated = [...daysOff, newDayOff].sort();
+        setDaysOff(updated);
+        setNewDayOff('');
+    };
+
+    // Szabadnap tÃ¶rlÃ©se
+    const handleRemoveDayOff = (dateToRemove) => {
+        setDaysOff(daysOff.filter((d) => d !== dateToRemove));
+    };
+
+    // BeosztÃ¡s Ã©s szabadsÃ¡gok mentÃ©se az adatbÃ¡zisba
+    const handleSaveSchedule = async () => {
+        if (!selectedStaff) return;
+        try {
+            const updatedAvailability = {
+                ...selectedStaff.availability,
+                workingHours,
+                daysOff
+            };
+
+            const res = await axiosInstance.put(`/staff/${selectedStaff._id}`, {
+                name: selectedStaff.name,
+                availability: updatedAvailability
+            });
+
+            // Ha a backend { message, staff } formÃ¡ban vÃ¡laszol, kicsomagoljuk a staff objektumot
+            const updatedStaff = res.data?.staff || (res.data?._id ? res.data : {
+                ...selectedStaff,
+                availability: updatedAvailability
+            });
+
+            setStaffList(staffList.map((s) => (s._id === selectedStaff._id ? updatedStaff : s)));
+            setScheduleModalOpen(false);
+            setFeedback(`${selectedStaff.name} beosztÃ¡sa Ã©s szabadsÃ¡gai sikeresen frissÃ­tve!`);
+        } catch (error) {
+            console.error('Hiba a beosztÃ¡s mentÃ©sekor:', error);
+        }
+    };
+
+    return (
+        <Container maxWidth="md" sx={{ mt: 5, mb: 5 }}>
+            {feedback && (
+                <Alert severity="success" sx={{ mb: 3 }} onClose={() => setFeedback('')}>
+                    {feedback}
+                </Alert>
+            )}
+
+            {/* FelsÅ‘ kÃ¡rtya: MunkatÃ¡rs hozzÃ¡adÃ¡sa / mÃ³dosÃ­tÃ¡sa */}
+            <Paper elevation={3} sx={{ p: 4, mb: 4 }}>
+                <Typography variant="h5" color="primary" fontWeight="bold" gutterBottom>
+                    {editingStaffId ? 'MunkatÃ¡rs MÃ³dosÃ­tÃ¡sa' : 'Ãšj MunkatÃ¡rs FelvÃ©tele'}
+                </Typography>
+
+                <Box component="form" onSubmit={handleSaveStaff} sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 2 }}>
+                    <TextField
+                        label="MunkatÃ¡rs neve"
+                        required
+                        fullWidth
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button type="submit" variant="contained" color="primary" size="large">
+                            {editingStaffId ? 'MÃ³dosÃ­tÃ¡s' : 'HozzÃ¡adÃ¡s'}
+                        </Button>
+                        {editingStaffId && (
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                size="large"
+                                onClick={() => {
+                                    setEditingStaffId(null);
+                                    setName('');
+                                }}
+                            >
+                                MÃ©gse
+                            </Button>
+                        )}
+                    </Box>
+                </Box>
+            </Paper>
+
+            {/* AlsÃ³ kÃ¡rtya: MunkatÃ¡rsak listÃ¡ja */}
+            <Paper elevation={3} sx={{ p: 4 }}>
+                <Typography variant="h5" color="secondary" fontWeight="bold" gutterBottom>
+                    MunkatÃ¡rsak ListÃ¡ja
+                </Typography>
+
+                <List>
+                    {staffList.length === 0 ? (
+                        <Typography color="textSecondary">MÃ©g nincs rÃ¶gzÃ­tve munkatÃ¡rs.</Typography>
+                    ) : (
+                        staffList.map((staff) => {
+                            const staffDaysOff = (staff.availability?.daysOff || []).map(cleanDateStr);
+                            return (
+                                <ListItem
+                                    key={staff._id}
+                                    divider
+                                    sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, py: 2 }}
+                                >
+                                    <Box>
+                                        <Typography variant="subtitle1" fontWeight="bold">
+                                            {staff.name}
+                                        </Typography>
+
+                                        <Typography variant="body2" color="textSecondary">
+                                            AktÃ­v munkanapok: {staff.availability?.workingHours?.length || 0} nap/hÃ©t
+                                        </Typography>
+
+                                        {/* RÃ¶gzÃ­tett szabadnapok megjelenÃ­tÃ©se tiszta Ã‰Ã‰Ã‰Ã‰-HH-NN formÃ¡tumban */}
+                                        {staffDaysOff.length > 0 && (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                                <Typography variant="caption" color="warning.main" fontWeight="bold">
+                                                    SzabadsÃ¡gon:
+                                                </Typography>
+                                                {staffDaysOff.map((dateStr) => (
+                                                    <Chip
+                                                        key={dateStr}
+                                                        icon={<EventBusyIcon />}
+                                                        label={dateStr}
+                                                        size="small"
+                                                        color="warning"
+                                                        variant="outlined"
+                                                    />
+                                                ))}
+                                            </Box>
+                                        )}
+                                    </Box>
+
+                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                        <Button
+                                            variant="contained"
+                                            color="info"
+                                            size="small"
+                                            onClick={() => handleOpenSchedule(staff)}
+                                        >
+                                            BeosztÃ¡s & SzabadsÃ¡g
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            color="primary"
+                                            size="small"
+                                            onClick={() => handleEditClick(staff)}
+                                        >
+                                            SzerkesztÃ©s
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            color="error"
+                                            size="small"
+                                            onClick={() => handleDeleteStaff(staff._id)}
+                                        >
+                                            TÃ¶rlÃ©s
+                                        </Button>
+                                    </Box>
+                                </ListItem>
+                            );
+                        })
+                    )}
+                </List>
+            </Paper>
+
+            {/* FelugrÃ³ ablak: Heti munkarend Ã©s szabadsÃ¡gok beÃ¡llÃ­tÃ¡sa */}
+            <Dialog open={scheduleModalOpen} onClose={() => setScheduleModalOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ fontWeight: 'bold' }}>
+                    {selectedStaff?.name} â€” Munkarend Ã©s SzabadsÃ¡gok
+                </DialogTitle>
+
+                <DialogContent dividers>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="subtitle1" fontWeight="bold" color="primary">
+                            1. ÃllandÃ³ heti beosztÃ¡s
+                        </Typography>
+                        <Button
+                            size="small"
+                            startIcon={<ContentCopyIcon />}
+                            onClick={handleCopyMondayToWeekdays}
+                        >
+                            HÃ©tfÅ‘ mÃ¡solÃ¡sa hÃ©tkÃ¶znapokra
+                        </Button>
+                    </Box>
+
+                    {DAYS_OF_WEEK.map((day) => {
+                        const dayConfig = workingHours.find((wh) => wh.dayOfWeek === day.dayOfWeek);
+                        const isWorking = Boolean(dayConfig);
+
+                        return (
+                            <Box
+                                key={day.dayOfWeek}
+                                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}
+                            >
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={isWorking}
+                                            onChange={() => handleToggleDay(day.dayOfWeek)}
+                                        />
+                                    }
+                                    label={day.label}
+                                    sx={{ minWidth: '130px' }}
+                                />
+
+                                {isWorking ? (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                        <TextField
+                                            type="time"
+                                            size="small"
+                                            value={dayConfig.startTime}
+                                            onChange={(e) => handleTimeChange(day.dayOfWeek, 'startTime', e.target.value)}
+                                        />
+                                        <Typography>-</Typography>
+                                        <TextField
+                                            type="time"
+                                            size="small"
+                                            value={dayConfig.endTime}
+                                            onChange={(e) => handleTimeChange(day.dayOfWeek, 'endTime', e.target.value)}
+                                        />
+                                    </Box>
+                                ) : (
+                                    <Typography variant="body2" color="textSecondary">
+                                        PihenÅ‘nap
+                                    </Typography>
+                                )}
+                            </Box>
+                        );
+                    })}
+
+                    <Divider sx={{ my: 3 }} />
+
+                    {/* SzabadsÃ¡g felvÃ©tele naptÃ¡ri nap alapjÃ¡n */}
+                    <Typography variant="subtitle1" fontWeight="bold" color="secondary" gutterBottom>
+                        2. SzabadsÃ¡g / Eseti szabadnapok kivÃ©tele
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                        A kivÃ¡lasztott naptÃ¡ri napokon a munkatÃ¡rshoz nem lehet majd idÅ‘pontot foglalni.
+                    </Typography>
+
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                        <TextField
+                            type="date"
+                            size="small"
+                            fullWidth
+                            value={newDayOff}
+                            onChange={(e) => setNewDayOff(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                        />
+                        <Button variant="contained" color="secondary" onClick={handleAddDayOff} sx={{ minWidth: '140px' }}>
+                            Szabadnap hozzÃ¡adÃ¡sa
+                        </Button>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {daysOff.length === 0 ? (
+                            <Typography variant="body2" color="textSecondary">
+                                Nincs rÃ¶gzÃ­tett szabadnap.
+                            </Typography>
+                        ) : (
+                            daysOff.map((dateStr) => (
+                                <Chip
+                                    key={dateStr}
+                                    label={dateStr}
+                                    color="warning"
+                                    onDelete={() => handleRemoveDayOff(dateStr)}
+                                />
+                            ))
+                        )}
+                    </Box>
+                </DialogContent>
+
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={() => setScheduleModalOpen(false)}>MÃ©gse</Button>
+                    <Button variant="contained" color="primary" onClick={handleSaveSchedule}>
+                        BeÃ¡llÃ­tÃ¡sok MentÃ©se
+                    </Button>
+                </DialogActions>
+            </Dialog>
+        </Container>
+    );
+};
+
+export default Staff;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\App.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// GyÃ¶kÃ©rkomponens, ÃºtvÃ¡lasztÃ¡s, szerepkÃ¶r-alapÃº hozzÃ¡fÃ©rÃ©s-vezÃ©rlÃ©s Ã©s dinamikus tÃ©ma kezelÃ©se
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { ThemeProvider, createTheme, CssBaseline, Box } from '@mui/material';
+
+import Login from './pages/Login';
+import Home from './pages/Home';
+import Services from './pages/Services';
+import Staff from './pages/Staff';
+import Bookings from './pages/Bookings';
+import PublicBooking from './pages/PublicBooking';
+import Profile from './pages/Profile';
+import GuestDashboard from './pages/GuestDashboard';
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import ProtectedRoute from './components/ProtectedRoute';
+
+const AppContent = ({ toggleColorMode, mode }) => {
+    const location = useLocation();
+    
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    const isGuest = user && (user.role === 'user' || user.role === 'guest');
+
+    const hideNavbarPaths = location.pathname.startsWith('/login') || location.pathname.startsWith('/foglalas');
+    const showAdminNavbar = !isGuest && !hideNavbarPaths;
+
+    return (
+        <>
+            {showAdminNavbar && <Navbar toggleColorMode={toggleColorMode} mode={mode} />}
+            <Box component="main" sx={{ flexGrow: 1, pb: 6 }}>
+                <Routes>
+                    {/* Publikus Ãºtvonalak (megkapjÃ¡k a sÃ¶tÃ©t mÃ³d kapcsolÃ³t) */}
+                    <Route path="/login" element={<Login toggleColorMode={toggleColorMode} mode={mode} />} />
+                    <Route path="/foglalas/:companyId" element={<PublicBooking toggleColorMode={toggleColorMode} mode={mode} />} />
+                    
+                    {/* VÃ©dett Ãºtvonalak szolgÃ¡ltatÃ³knak */}
+                    <Route path="/" element={<ProtectedRoute allowedRoles={['company', 'admin']}><Home /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute allowedRoles={['company', 'admin']}><Profile /></ProtectedRoute>} />
+                    <Route path="/services" element={<ProtectedRoute allowedRoles={['company', 'admin']}><Services /></ProtectedRoute>} />
+                    <Route path="/staff" element={<ProtectedRoute allowedRoles={['company', 'admin']}><Staff /></ProtectedRoute>} />
+                    <Route path="/bookings" element={<ProtectedRoute allowedRoles={['company', 'admin']}><Bookings /></ProtectedRoute>} />
+
+                    {/* VÃ©dett Ãºtvonal a vendÃ©gek szÃ¡mÃ¡ra (megkapja a sÃ¶tÃ©t mÃ³d kapcsolÃ³t) */}
+                    <Route path="/vendeg-profil" element={<ProtectedRoute allowedRoles={['user', 'guest', 'company']}><GuestDashboard toggleColorMode={toggleColorMode} mode={mode} /></ProtectedRoute>} />
+                </Routes>
+            </Box>
+            <Footer />
+        </>
+    );
+};
+
+function App() {
+    // SÃ¶tÃ©t mÃ³d Ã¡llapotÃ¡nak betÃ¶ltÃ©se a localStorage-bÃ³l (alapÃ©rtelmezett: light)
+    const [mode, setMode] = useState(localStorage.getItem('themeMode') || 'light');
+
+    // TÃ©ma vÃ¡ltÃ¡sa Ã©s elmentÃ©se a bÃ¶ngÃ©szÅ‘ memÃ³riÃ¡jÃ¡ba
+    const toggleColorMode = () => {
+        setMode((prevMode) => {
+            const newMode = prevMode === 'light' ? 'dark' : 'light';
+            localStorage.setItem('themeMode', newMode);
+            return newMode;
+        });
+    };
+
+    const theme = useMemo(() => createTheme({
+        palette: {
+            mode,
+            primary: { main: '#2563eb' },
+            secondary: { main: '#f97316' },
+            background: {
+                default: mode === 'light' ? '#f8fafc' : '#0f172a',
+                paper: mode === 'light' ? '#ffffff' : '#1e293b',
+            }
+        },
+        typography: {
+            fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+            button: { textTransform: 'none', fontWeight: 600 },
+        },
+        shape: { borderRadius: 12 },
+        components: {
+            MuiCssBaseline: {
+                styleOverrides: {
+                    body: { cursor: 'default' },
+                    'input, textarea': { cursor: 'text' }
+                }
+            },
+            MuiPaper: {
+                styleOverrides: {
+                    root: { backgroundImage: 'none' },
+                    elevation3: { boxShadow: mode === 'light' ? '0 4px 6px -1px rgb(0 0 0 / 0.1)' : '0 4px 6px -1px rgb(0 0 0 / 0.5)' }
+                }
+            }
+        }
+    }), [mode]);
+
+    return (
+        <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                <Router>
+                    <AppContent toggleColorMode={toggleColorMode} mode={mode} />
+                </Router>
+            </Box>
+        </ThemeProvider>
+    );
+}
+
+export default App;
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\src\index.js =================
+
+// KÃ©szÃ­tette: Daruka IllÃ©s Zsombor (Neptun: YB3IUF)
+// A React alkalmazÃ¡s belÃ©pÃ©si pontja
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\frontend\package.json =================
+
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.5.0",
+    "@mui/material": "^9.4.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.20.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
+
+
+// ================= FÁJL: C:\Users\illes\OneDrive\Asztali gép\szakdoga\package.json =================
+
+{
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
+  }
+}
+
