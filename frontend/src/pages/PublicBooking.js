@@ -423,20 +423,51 @@ const PublicBooking = ({ toggleColorMode, mode }) => {
                             </Box>
 
                             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
-                                {getCalendarDays().map((item, idx) => item ? (
-                                    <Button
-                                        key={item.dateStr} disabled={item.isPast} onClick={() => setSelectedDate(item.dateStr)}
-                                        sx={{
-                                            minWidth: 0, height: 36, p: 0, borderRadius: '50%',
-                                            bgcolor: item.dateStr === selectedDate ? 'primary.main' : 'transparent',
-                                            color: item.dateStr === selectedDate ? '#fff' : 'text.primary',
-                                            border: item.dateStr === todayStr && item.dateStr !== selectedDate ? '1px solid' : 'none',
-                                            '&:hover': { bgcolor: item.dateStr === selectedDate ? 'primary.dark' : 'action.hover' }
-                                        }}
-                                    >
-                                        {item.day}
-                                    </Button>
-                                ) : <Box key={`e-${idx}`} />)}
+                                {getCalendarDays().map((item, idx) => {
+                                    if (!item) return <Box key={`e-${idx}`} />;
+
+                                    // Múltbeli dátumok kizárása a foglalási lehetőségek közül
+                                    let isDisabled = item.isPast; 
+                                    
+                                    if (!isDisabled && selectedStaff && selectedStaff.availability) {
+                                        // Munkatársi szabadságok (eseti szabadnapok) ellenőrzése
+                                        const staffDaysOff = (selectedStaff.availability.daysOff || []).map(d => String(d).split('T')[0]);
+                                        if (staffDaysOff.includes(item.dateStr)) {
+                                            isDisabled = true;
+                                        }
+
+                                        // Munkatárs heti állandó beosztásának ellenőrzése az adott napra (Vasárnap indexelésének igazítása 7-re)
+                                        const dateObj = new Date(item.dateStr);
+                                        const jsDay = dateObj.getDay();
+                                        const dayOfWeek = jsDay === 0 ? 7 : jsDay; 
+                                        
+                                        const worksOnThisDay = selectedStaff.availability.workingHours?.some(
+                                            (wh) => wh.dayOfWeek === dayOfWeek
+                                        );
+
+                                        if (!worksOnThisDay) {
+                                            isDisabled = true;
+                                        }
+                                    }
+
+                                    return (
+                                        <Button
+                                            key={item.dateStr} 
+                                            disabled={isDisabled} 
+                                            onClick={() => setSelectedDate(item.dateStr)}
+                                            sx={{
+                                                minWidth: 0, height: 36, p: 0, borderRadius: '50%',
+                                                bgcolor: item.dateStr === selectedDate ? 'primary.main' : 'transparent',
+                                                color: item.dateStr === selectedDate ? '#fff' : (isDisabled ? 'text.disabled' : 'text.primary'),
+                                                border: item.dateStr === todayStr && item.dateStr !== selectedDate ? '1px solid' : 'none',
+                                                opacity: isDisabled ? 0.3 : 1, // Vizuális visszajelzés az inaktív napokról
+                                                '&:hover': { bgcolor: item.dateStr === selectedDate ? 'primary.dark' : (isDisabled ? 'transparent' : 'action.hover') }
+                                            }}
+                                        >
+                                            {item.day}
+                                        </Button>
+                                    );
+                                })}
                             </Box>
                         </Box>
 
