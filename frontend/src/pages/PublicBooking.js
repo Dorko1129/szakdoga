@@ -436,10 +436,8 @@ const PublicBooking = ({ toggleColorMode, mode }) => {
                                             isDisabled = true;
                                         }
 
-                                        // Munkatárs heti állandó beosztásának ellenőrzése az adott napra (Vasárnap indexelésének igazítása 7-re)
-                                        const dateObj = new Date(item.dateStr);
-                                        const jsDay = dateObj.getDay();
-                                        const dayOfWeek = jsDay === 0 ? 7 : jsDay; 
+                                        const [yy, mm, dd] = item.dateStr.split('-').map(Number);
+                                        const dayOfWeek = new Date(yy, mm - 1, dd).getDay(); // 0 = vasárnap
                                         
                                         const worksOnThisDay = selectedStaff.availability.workingHours?.some(
                                             (wh) => wh.dayOfWeek === dayOfWeek
